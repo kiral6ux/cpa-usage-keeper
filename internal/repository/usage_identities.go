@@ -17,13 +17,16 @@ func ReplaceUsageIdentitiesForAuthType(ctx context.Context, db *gorm.DB, identit
 		return fmt.Errorf("database is nil")
 	}
 
+	// 先统一清洗和去重输入，后续 upsert 与 stale 判断都使用同一组 identity。
 	normalized, incomingIdentities := normalizeUsageIdentities(identities, authType)
 
 	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// 先恢复或写入本次同步到的身份，保证后续 stale 删除只处理缺失项。
 		if err := upsertUsageIdentities(tx, normalized); err != nil {
 			return err
 		}
 
+		// 再按 auth_type 范围标记本次没有出现的身份为 deleted。
 		return markStaleUsageIdentitiesDeleted(
 			tx,
 			tx.Model(&models.UsageIdentity{}).Where("auth_type = ?", authType),
@@ -39,10 +42,12 @@ func ReplaceUsageIdentitiesForProviderTypes(ctx context.Context, db *gorm.DB, id
 		return fmt.Errorf("database is nil")
 	}
 
+	// Provider metadata 只允许刷新 AI provider 身份，输入类型和 identity 先统一规范化。
 	normalized, incomingIdentities := normalizeUsageIdentities(identities, models.UsageIdentityAuthTypeAIProvider)
 	types := normalizeProviderTypes(providerTypes)
 
 	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// 先 upsert 本次成功拉到的 provider identity，避免后续 stale 标记误删活跃项。
 		if err := upsertUsageIdentities(tx, normalized); err != nil {
 			return err
 		}
@@ -50,8 +55,10 @@ func ReplaceUsageIdentitiesForProviderTypes(ctx context.Context, db *gorm.DB, id
 			return nil
 		}
 
+		// fetched provider type 也按批次切分，避免极端情况下 type IN 变量过多。
 		for start := 0; start < len(types); start += defaultRepositoryInsertBatchSize {
 			end := min(start+defaultRepositoryInsertBatchSize, len(types))
+			// 每批只处理本次成功 fetch 的 provider type，未 fetch 的类型保持现状。
 			query := tx.Model(&models.UsageIdentity{}).
 				Where("auth_type = ?", models.UsageIdentityAuthTypeAIProvider).
 				Where("type IN ?", types[start:end])
@@ -250,11 +257,13 @@ func normalizeProviderTypes(providerTypes []string) []string {
 }
 
 func markStaleUsageIdentitiesDeleted(tx *gorm.DB, query *gorm.DB, incomingIdentities []string, now time.Time, context string) error {
+	// 把本次同步到的 identity 放进内存集合，避免生成超大的 identity NOT IN SQL。
 	incoming := make(map[string]struct{}, len(incomingIdentities))
 	for _, identity := range incomingIdentities {
 		incoming[identity] = struct{}{}
 	}
 
+	// 只从数据库读取候选行的最小字段，后续在 Go 中判断哪些行已经 stale。
 	var candidates []struct {
 		ID       uint
 		Identity string
@@ -263,6 +272,7 @@ func markStaleUsageIdentitiesDeleted(tx *gorm.DB, query *gorm.DB, incomingIdenti
 		return fmt.Errorf("%s: %w", context, err)
 	}
 
+	// 候选行中没有出现在本次输入里的 ID，就是需要标记删除的 stale 数据。
 	staleIDs := make([]uint, 0)
 	for _, candidate := range candidates {
 		if _, ok := incoming[candidate.Identity]; ok {
@@ -270,6 +280,8 @@ func markStaleUsageIdentitiesDeleted(tx *gorm.DB, query *gorm.DB, incomingIdenti
 		}
 		staleIDs = append(staleIDs, candidate.ID)
 	}
+
+	// stale ID 也按批次更新，避免 id IN 在数据量大时再次触发 SQLite 变量上限。
 	for start := 0; start < len(staleIDs); start += defaultRepositoryInsertBatchSize {
 		end := min(start+defaultRepositoryInsertBatchSize, len(staleIDs))
 		if err := tx.Model(&models.UsageIdentity{}).
@@ -286,6 +298,7 @@ func upsertUsageIdentities(tx *gorm.DB, identities []models.UsageIdentity) error
 		return nil
 	}
 
+	// 使用相同的冲突更新语义，只把单条大 INSERT 拆成多批执行。
 	if err := tx.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "auth_type"}, {Name: "identity"}},
 		DoUpdates: clause.Assignments(map[string]any{

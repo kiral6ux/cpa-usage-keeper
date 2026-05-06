@@ -70,9 +70,12 @@ func InsertUsageEvents(db *gorm.DB, events []models.UsageEvent) (int, int, error
 
 	inserted := 0
 
+	// 按仓储默认批次拆分写入，避免单条 INSERT 的 SQLite 变量数量过多。
 	for start := 0; start < len(events); start += defaultRepositoryInsertBatchSize {
 		end := min(start+defaultRepositoryInsertBatchSize, len(events))
 		batch := events[start:end]
+
+		// 每批仍按 event_key 去重，保持原有重复事件忽略语义。
 		result := db.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "event_key"}},
 			DoNothing: true,
