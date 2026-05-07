@@ -695,6 +695,67 @@ func TestSyncMetadataWritesAuthFilesToUsageIdentities(t *testing.T) {
 	assertTableNotExists(t, db, "auth_files")
 }
 
+func TestSyncMetadataWritesCodexAuthFileIDTokenFieldsOnlyForCodex(t *testing.T) {
+	db := openSyncTestDatabase(t)
+	activeStart := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+	activeUntil := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	accountID := "acct_123"
+	ignoredAccountID := "acct_should_ignore"
+	planType := "team"
+	service := NewSyncServiceWithOptions(db, SyncServiceOptions{
+		BaseURL: "https://cpa.example.com",
+		MetadataFetcher: stubMetadataFetcher{authFilesResult: &cpa.AuthFilesResult{StatusCode: 200, Payload: cpa.AuthFilesResponse{Files: []cpa.AuthFile{{
+			AuthIndex: "codex-auth",
+			Email:     "codex@example.com",
+			Type:      "codex",
+			Provider:  "Codex",
+			IDToken: &cpa.AuthFileIDToken{
+				AccountID:   &accountID,
+				ActiveStart: &activeStart,
+				ActiveUntil: &activeUntil,
+				PlanType:    &planType,
+			},
+		}, {
+			AuthIndex: "claude-auth",
+			Email:     "claude@example.com",
+			Type:      "claude",
+			Provider:  "Claude",
+			IDToken: &cpa.AuthFileIDToken{
+				AccountID:   &ignoredAccountID,
+				ActiveStart: &activeStart,
+				ActiveUntil: &activeUntil,
+				PlanType:    &planType,
+			},
+		}, {
+			AuthIndex: "codex-no-token",
+			Email:     "codex-no-token@example.com",
+			Type:      "codex",
+			Provider:  "Codex",
+		}}}}},
+	})
+
+	if err := service.SyncMetadata(context.Background()); err != nil {
+		t.Fatalf("SyncMetadata returned error: %v", err)
+	}
+	items, err := repository.ListUsageIdentities(context.Background(), db)
+	if err != nil {
+		t.Fatalf("list usage identities: %v", err)
+	}
+	byIdentity := usageIdentitiesByIdentity(items)
+	codex := byIdentity["codex-auth"]
+	if codex.AccountID == nil || *codex.AccountID != "acct_123" || codex.PlanType == nil || *codex.PlanType != "team" || codex.ActiveStart == nil || !codex.ActiveStart.Equal(activeStart) || codex.ActiveUntil == nil || !codex.ActiveUntil.Equal(activeUntil) {
+		t.Fatalf("expected codex id_token fields to persist, got %+v", codex)
+	}
+	claude := byIdentity["claude-auth"]
+	if claude.AccountID != nil || claude.PlanType != nil || claude.ActiveStart != nil || claude.ActiveUntil != nil {
+		t.Fatalf("expected non-codex auth file to ignore id_token fields, got %+v", claude)
+	}
+	codexNoToken := byIdentity["codex-no-token"]
+	if codexNoToken.AccountID != nil || codexNoToken.PlanType != nil || codexNoToken.ActiveStart != nil || codexNoToken.ActiveUntil != nil {
+		t.Fatalf("expected codex auth file without id_token to keep nullable fields empty, got %+v", codexNoToken)
+	}
+}
+
 func TestSyncMetadataWritesProviderMetadataToUsageIdentities(t *testing.T) {
 	db := openSyncTestDatabase(t)
 	service := NewSyncServiceWithOptions(db, SyncServiceOptions{
@@ -713,7 +774,7 @@ func TestSyncMetadataWritesProviderMetadataToUsageIdentities(t *testing.T) {
 	}
 	byIdentity := usageIdentitiesByIdentity(items)
 	apiKey := byIdentity["claude-auth-index"]
-	if apiKey.Name != "Claude Team" || apiKey.AuthType != models.UsageIdentityAuthTypeAIProvider || apiKey.AuthTypeName != "apikey" || apiKey.Identity != "claude-auth-index" || apiKey.Type != "claude" || apiKey.LookupKey != "claude-key" || apiKey.Provider != "Claude Team" || apiKey.IsDeleted {
+	if apiKey.Name != "Claude Team" || apiKey.AuthType != models.UsageIdentityAuthTypeAIProvider || apiKey.AuthTypeName != "apikey" || apiKey.Identity != "claude-auth-index" || apiKey.Type != "claude" || apiKey.LookupKey != "claude-key" || apiKey.Prefix != "claude-prefix" || apiKey.Provider != "Claude Team" || apiKey.IsDeleted {
 		t.Fatalf("unexpected provider usage identity for api key: %+v", apiKey)
 	}
 	if _, ok := byIdentity["claude-prefix"]; ok {
@@ -767,8 +828,8 @@ func TestSyncMetadataDoesNotUseOpenAICompatibilityPrefixAsDisplayName(t *testing
 	if identity.Identity != "openai-compatible-auth-index" || identity.LookupKey != "openai-compatible-key" {
 		t.Fatalf("expected OpenAI compatibility api key usage identity, got %+v", identity)
 	}
-	if identity.Name != "openai" || identity.Provider != "openai" {
-		t.Fatalf("expected raw OpenAI compatibility prefix not to be used as display value, got %+v", identity)
+	if identity.Name != "openai" || identity.Provider != "openai" || identity.Prefix != "https://proxy.internal/v1" {
+		t.Fatalf("expected raw OpenAI compatibility prefix to be stored only as prefix metadata, got %+v", identity)
 	}
 	if _, ok := byIdentity["https://proxy.internal/v1"]; ok {
 		t.Fatalf("expected OpenAI compatibility prefix not to create usage identity, got %+v", items)
@@ -891,9 +952,17 @@ func TestSyncMetadataPersistsProviderUsageIdentitiesFromDedicatedEndpoints(t *te
 		t.Fatalf("list usage identities: %v", err)
 	}
 	providerItems := usageIdentitiesByIdentity(items)
-	for expected, lookupKey := range map[string]string{"gemini-auth-index": "gemini-key", "claude-auth-index": "claude-key", "custom-auth-index": "custom-key"} {
+	expectedMetadata := map[string]struct {
+		lookupKey string
+		prefix    string
+	}{
+		"gemini-auth-index": {lookupKey: "gemini-key", prefix: "gemini-prefix"},
+		"claude-auth-index": {lookupKey: "claude-key", prefix: "claude-prefix"},
+		"custom-auth-index": {lookupKey: "custom-key", prefix: "custom-openai"},
+	}
+	for expected, metadata := range expectedMetadata {
 		identity := providerItems[expected]
-		if identity.Identity != expected || identity.LookupKey != lookupKey || identity.AuthType != models.UsageIdentityAuthTypeAIProvider || identity.AuthTypeName != "apikey" || identity.IsDeleted {
+		if identity.Identity != expected || identity.LookupKey != metadata.lookupKey || identity.Prefix != metadata.prefix || identity.AuthType != models.UsageIdentityAuthTypeAIProvider || identity.AuthTypeName != "apikey" || identity.IsDeleted {
 			t.Fatalf("expected active provider usage identity %q, got %+v", expected, identity)
 		}
 	}

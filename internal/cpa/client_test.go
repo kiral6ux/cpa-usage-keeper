@@ -39,6 +39,45 @@ func TestFetchExternalAPIKeysSendsBearerTokenAndParsesExternalKeys(t *testing.T)
 	}
 }
 
+func TestFetchAuthFilesParsesCodexIDTokenFields(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != cpaManagementAuthFilesEndpoint {
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer management-secret" {
+			t.Fatalf("expected management Authorization header, got %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"files":[{"auth_index":"codex-auth","type":"codex","id_token":{"chatgpt_account_id":"acct_123","chatgpt_subscription_active_start":"2026-05-01T00:00:00Z","chatgpt_subscription_active_until":"2026-06-01T00:00:00Z","plan_type":"team"}}]}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "management-secret", 2*time.Second, false)
+	result, err := client.FetchAuthFiles(context.Background())
+	if err != nil {
+		t.Fatalf("FetchAuthFiles returned error: %v", err)
+	}
+	if len(result.Payload.Files) != 1 {
+		t.Fatalf("expected one auth file, got %#v", result.Payload.Files)
+	}
+	file := result.Payload.Files[0]
+	if file.IDToken == nil {
+		t.Fatalf("expected id_token to decode, got %+v", file)
+	}
+	if file.IDToken.AccountID == nil || *file.IDToken.AccountID != "acct_123" {
+		t.Fatalf("expected account id to decode, got %+v", file.IDToken)
+	}
+	if file.IDToken.ActiveStart == nil || !file.IDToken.ActiveStart.Equal(time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("expected active start to decode, got %+v", file.IDToken.ActiveStart)
+	}
+	if file.IDToken.ActiveUntil == nil || !file.IDToken.ActiveUntil.Equal(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("expected active until to decode, got %+v", file.IDToken.ActiveUntil)
+	}
+	if file.IDToken.PlanType == nil || *file.IDToken.PlanType != "team" {
+		t.Fatalf("expected plan type to decode, got %+v", file.IDToken.PlanType)
+	}
+}
+
 func TestFetchUsageQueueUsesManagementEndpointAndParsesMessages(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != cpaManagementUsageQueueEndpoint {

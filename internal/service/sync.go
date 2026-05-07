@@ -534,19 +534,49 @@ func syncAuthFiles(ctx context.Context, db *gorm.DB, result *cpa.AuthFilesResult
 
 	identities := make([]models.UsageIdentity, 0, len(result.Payload.Files))
 	for _, file := range result.Payload.Files {
-		identities = append(identities, models.UsageIdentity{
-			Name:         firstNonEmpty(file.Email, file.Label, file.Name, file.AuthIndex),
-			AuthType:     models.UsageIdentityAuthTypeAuthFile,
-			AuthTypeName: "oauth",
-			Identity:     file.AuthIndex,
-			Type:         file.Type,
-			Provider:     file.Provider,
-		})
+		identities = append(identities, authFileUsageIdentity(file))
 	}
 	if err := repository.ReplaceUsageIdentitiesForAuthType(ctx, db, identities, models.UsageIdentityAuthTypeAuthFile, now); err != nil {
 		return fmt.Errorf("sync auth file usage identities: %w", err)
 	}
 	return nil
+}
+
+type authFileUsageIdentityExtension func(cpa.AuthFile, *models.UsageIdentity)
+
+var authFileUsageIdentityExtensions = map[string]authFileUsageIdentityExtension{
+	"codex": extendCodexAuthFileUsageIdentity,
+}
+
+// auth_files 先走通用身份映射，再按 type 追加各来源特有字段，方便后续扩展新类型。
+func authFileUsageIdentity(file cpa.AuthFile) models.UsageIdentity {
+	identity := baseAuthFileUsageIdentity(file)
+	if extend, ok := authFileUsageIdentityExtensions[strings.ToLower(strings.TrimSpace(file.Type))]; ok {
+		extend(file, &identity)
+	}
+	return identity
+}
+
+func baseAuthFileUsageIdentity(file cpa.AuthFile) models.UsageIdentity {
+	return models.UsageIdentity{
+		Name:         firstNonEmpty(file.Email, file.Label, file.Name, file.AuthIndex),
+		AuthType:     models.UsageIdentityAuthTypeAuthFile,
+		AuthTypeName: "oauth",
+		Identity:     file.AuthIndex,
+		Type:         file.Type,
+		Provider:     file.Provider,
+	}
+}
+
+// Codex 的 ChatGPT id_token 字段只在 type=codex 且字段存在时写入；缺失字段保持 nil，入库后就是 NULL。
+func extendCodexAuthFileUsageIdentity(file cpa.AuthFile, identity *models.UsageIdentity) {
+	if file.IDToken == nil {
+		return
+	}
+	identity.AccountID = file.IDToken.AccountID
+	identity.ActiveStart = file.IDToken.ActiveStart
+	identity.ActiveUntil = file.IDToken.ActiveUntil
+	identity.PlanType = file.IDToken.PlanType
 }
 
 func fetchProviderMetadata(ctx context.Context, fetcher MetadataFetcher) (cpa.ProviderMetadataConfig, []string, error) {
@@ -616,6 +646,7 @@ func syncProviderMetadata(ctx context.Context, db *gorm.DB, cfg cpa.ProviderMeta
 
 type providerMetadataInput struct {
 	LookupKey    string
+	Prefix       string
 	ProviderType string
 	DisplayName  string
 	AuthIndex    string
@@ -632,6 +663,7 @@ func providerMetadataUsageIdentities(inputs []providerMetadataInput) []models.Us
 			Type:         input.ProviderType,
 			Provider:     input.DisplayName,
 			LookupKey:    input.LookupKey,
+			Prefix:       input.Prefix,
 		})
 	}
 	return identities
@@ -640,8 +672,10 @@ func providerMetadataUsageIdentities(inputs []providerMetadataInput) []models.Us
 func flattenProviderMetadata(cfg cpa.ProviderMetadataConfig) []providerMetadataInput {
 	items := make([]providerMetadataInput, 0)
 	seen := make(map[string]struct{})
-	appendItem := func(lookupKey, providerType, displayName, authIndex string) {
+	// Provider metadata 只生成 auth-index 身份；prefix 作为同一身份的附加字段保存，不再生成独立行。
+	appendItem := func(lookupKey, prefix, providerType, displayName, authIndex string) {
 		lookupKey = strings.TrimSpace(lookupKey)
+		prefix = strings.TrimSpace(prefix)
 		providerType = strings.TrimSpace(providerType)
 		displayName = strings.TrimSpace(displayName)
 		authIndex = strings.TrimSpace(authIndex)
@@ -654,6 +688,7 @@ func flattenProviderMetadata(cfg cpa.ProviderMetadataConfig) []providerMetadataI
 		seen[authIndex] = struct{}{}
 		items = append(items, providerMetadataInput{
 			LookupKey:    lookupKey,
+			Prefix:       prefix,
 			ProviderType: providerType,
 			DisplayName:  displayName,
 			AuthIndex:    authIndex,
@@ -662,7 +697,7 @@ func flattenProviderMetadata(cfg cpa.ProviderMetadataConfig) []providerMetadataI
 	appendProviderEntries := func(providerType string, configs []cpa.ProviderKeyConfig) {
 		for _, cfg := range configs {
 			displayName := firstNonEmpty(cfg.Name, providerType)
-			appendItem(cfg.APIKey, providerType, displayName, cfg.AuthIndex)
+			appendItem(cfg.APIKey, cfg.Prefix, providerType, displayName, cfg.AuthIndex)
 		}
 	}
 
@@ -674,7 +709,7 @@ func flattenProviderMetadata(cfg cpa.ProviderMetadataConfig) []providerMetadataI
 	for _, provider := range cfg.OpenAICompatibility {
 		displayName := firstNonEmpty(provider.Name, "openai")
 		for _, entry := range provider.APIKeyEntries {
-			appendItem(entry.APIKey, "openai", displayName, entry.AuthIndex)
+			appendItem(entry.APIKey, provider.Prefix, "openai", displayName, entry.AuthIndex)
 		}
 	}
 

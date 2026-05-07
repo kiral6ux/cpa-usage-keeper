@@ -207,6 +207,94 @@ func TestUsageIdentityReplaceForProviderTypesMarksOnlyScopedProviderTypesDeleted
 	}
 }
 
+func TestUsageIdentityReplaceForProviderTypesRefreshesSourceMetadataAndPreservesReservedFields(t *testing.T) {
+	db := openTestDatabase(t)
+	ctx := context.Background()
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	limitReached := true
+	primaryUsed := 80
+	primaryResetAt := now.Add(time.Hour)
+	seed := models.UsageIdentity{
+		Name:                     "Old Provider",
+		AuthType:                 models.UsageIdentityAuthTypeAIProvider,
+		AuthTypeName:             "apikey",
+		Identity:                 "provider-auth-index",
+		Type:                     "claude",
+		Provider:                 "Old Provider",
+		LookupKey:                "old-key",
+		Prefix:                   "old-prefix",
+		LimitReached:             &limitReached,
+		PrimaryWindowUsedPercent: &primaryUsed,
+		PrimaryWindowResetAt:     &primaryResetAt,
+	}
+	if err := db.Create(&seed).Error; err != nil {
+		t.Fatalf("seed provider identity: %v", err)
+	}
+
+	err := ReplaceUsageIdentitiesForProviderTypes(ctx, db, []models.UsageIdentity{
+		{
+			Name:         "New Provider",
+			AuthTypeName: "apikey",
+			Identity:     "provider-auth-index",
+			Type:         "claude",
+			Provider:     "New Provider",
+			LookupKey:    "new-key",
+			Prefix:       "new-prefix",
+		},
+	}, []string{"claude"}, now)
+	if err != nil {
+		t.Fatalf("ReplaceUsageIdentitiesForProviderTypes returned error: %v", err)
+	}
+
+	rows, err := ListUsageIdentities(ctx, db)
+	if err != nil {
+		t.Fatalf("ListUsageIdentities returned error: %v", err)
+	}
+	updated := usageIdentitiesByIdentity(rows)["provider-auth-index"]
+	if updated.Prefix != "new-prefix" || updated.LookupKey != "new-key" || updated.Provider != "New Provider" {
+		t.Fatalf("expected source metadata refreshed, got %+v", updated)
+	}
+	if updated.LimitReached == nil || !*updated.LimitReached || updated.PrimaryWindowUsedPercent == nil || *updated.PrimaryWindowUsedPercent != 80 || updated.PrimaryWindowResetAt == nil || !updated.PrimaryWindowResetAt.Equal(primaryResetAt) {
+		t.Fatalf("expected reserved fields preserved, got %+v", updated)
+	}
+}
+
+func TestUsageIdentityReplaceForAuthTypePersistsSourceMetadataFields(t *testing.T) {
+	db := openTestDatabase(t)
+	ctx := context.Background()
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	activeStart := now.Add(-24 * time.Hour)
+	activeUntil := now.Add(24 * time.Hour)
+	accountID := "acct_123"
+	planType := "team"
+
+	err := ReplaceUsageIdentitiesForAuthType(ctx, db, []models.UsageIdentity{
+		{
+			Name:         "Codex Account",
+			AuthTypeName: "oauth",
+			Identity:     "codex-auth",
+			Type:         "codex",
+			Provider:     "codex",
+			AccountID:    &accountID,
+			ActiveStart:  &activeStart,
+			ActiveUntil:  &activeUntil,
+			PlanType:     &planType,
+		},
+	}, models.UsageIdentityAuthTypeAuthFile, now)
+	if err != nil {
+		t.Fatalf("ReplaceUsageIdentitiesForAuthType returned error: %v", err)
+	}
+
+	rows, err := ListUsageIdentities(ctx, db)
+	if err != nil {
+		t.Fatalf("ListUsageIdentities returned error: %v", err)
+	}
+	updated := usageIdentitiesByIdentity(rows)["codex-auth"]
+	if updated.AccountID == nil || *updated.AccountID != "acct_123" || updated.PlanType == nil || *updated.PlanType != "team" || updated.ActiveStart == nil || !updated.ActiveStart.Equal(activeStart) || updated.ActiveUntil == nil || !updated.ActiveUntil.Equal(activeUntil) {
+		t.Fatalf("expected auth file source metadata persisted, got %+v", updated)
+	}
+}
+
 func TestUsageIdentityReplaceForAuthTypeBatchesLargeUpsertAndMarksStaleRowsDeleted(t *testing.T) {
 	db := openTestDatabase(t)
 	ctx := context.Background()

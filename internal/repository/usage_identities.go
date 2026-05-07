@@ -56,8 +56,8 @@ func ReplaceUsageIdentitiesForProviderTypes(ctx context.Context, db *gorm.DB, id
 		}
 
 		// fetched provider type 也按批次切分，避免极端情况下 type IN 变量过多。
-		for start := 0; start < len(types); start += defaultRepositoryInsertBatchSize {
-			end := min(start+defaultRepositoryInsertBatchSize, len(types))
+		for start := 0; start < len(types); start += insertBatchSize(models.UsageIdentity{}) {
+			end := min(start+insertBatchSize(models.UsageIdentity{}), len(types))
 			// 每批只处理本次成功 fetch 的 provider type；未返回且仍 active 的身份才会被标记 deleted。
 			query := tx.Model(&models.UsageIdentity{}).
 				Where("auth_type = ? AND is_deleted = ?", models.UsageIdentityAuthTypeAIProvider, false).
@@ -168,11 +168,13 @@ type usageIdentityStatsDelta struct {
 
 func aggregateUsageIdentityDelta(tx *gorm.DB, identity models.UsageIdentity) (usageIdentityStatsDelta, error) {
 	var delta usageIdentityStatsDelta
+	// 先按 identity 类型生成 usage_events 过滤条件，避免对无关事件做聚合。
 	query, ok := usageIdentityEventsQuery(tx.Model(&models.UsageEvent{}), identity)
 	if !ok {
 		return delta, nil
 	}
 
+	// 再用 last_aggregated_usage_event_id 做增量游标，只累计上次之后的新事件。
 	if err := query.
 		Select(`
 			COUNT(*) AS total_requests,
@@ -192,6 +194,7 @@ func aggregateUsageIdentityDelta(tx *gorm.DB, identity models.UsageIdentity) (us
 		return delta, nil
 	}
 
+	// 统计总量不包含首尾时间，首尾时间用同一组身份过滤条件分别取最早和最晚事件。
 	var firstEvent models.UsageEvent
 	firstQuery, _ := usageIdentityEventsQuery(tx.Model(&models.UsageEvent{}), identity)
 	if err := firstQuery.Where("id > ?", identity.LastAggregatedUsageEventID).Order("timestamp asc, id asc").First(&firstEvent).Error; err != nil {
@@ -214,9 +217,11 @@ func aggregateUsageIdentityDelta(tx *gorm.DB, identity models.UsageIdentity) (us
 func usageIdentityEventsQuery(query *gorm.DB, identity models.UsageIdentity) (*gorm.DB, bool) {
 	switch identity.AuthType {
 	case models.UsageIdentityAuthTypeAuthFile:
+		// auth_files 身份对应 usage_events.auth_type=oauth，并通过 auth_index 精确匹配。
 		return query.Where("auth_type = ? AND auth_index = ?", "oauth", identity.Identity), true
 	case models.UsageIdentityAuthTypeAIProvider:
-		return query.Where("auth_type = ? AND source = ?", "apikey", identity.Identity), true
+		// AI provider 身份对应 usage_events.auth_type=apikey，并通过 auth_index 精确匹配。
+		return query.Where("auth_type = ? AND auth_index = ?", "apikey", identity.Identity), true
 	default:
 		return query, false
 	}
@@ -246,12 +251,26 @@ func normalizeUsageIdentities(identities []models.UsageIdentity, authType models
 		identity.Type = strings.TrimSpace(identity.Type)
 		identity.Provider = strings.TrimSpace(identity.Provider)
 		identity.LookupKey = strings.TrimSpace(identity.LookupKey)
+		identity.Prefix = strings.TrimSpace(identity.Prefix)
+		identity.AccountID = trimOptionalString(identity.AccountID)
+		identity.PlanType = trimOptionalString(identity.PlanType)
 		identity.IsDeleted = false
 		identity.DeletedAt = nil
 		normalized = append(normalized, identity)
 	}
 
 	return normalized, incomingIdentities
+}
+
+func trimOptionalString(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(*value)
+	if trimmed == "" {
+		return nil
+	}
+	return &trimmed
 }
 
 func normalizeProviderTypes(providerTypes []string) []string {
@@ -297,8 +316,8 @@ func markStaleUsageIdentitiesDeleted(tx *gorm.DB, query *gorm.DB, incomingIdenti
 	}
 
 	// stale ID 也按批次更新，避免 id IN 在数据量大时再次触发 SQLite 变量上限。
-	for start := 0; start < len(staleIDs); start += defaultRepositoryInsertBatchSize {
-		end := min(start+defaultRepositoryInsertBatchSize, len(staleIDs))
+	for start := 0; start < len(staleIDs); start += insertBatchSize(models.UsageIdentity{}) {
+		end := min(start+insertBatchSize(models.UsageIdentity{}), len(staleIDs))
 		if err := tx.Model(&models.UsageIdentity{}).
 			Where("id IN ?", staleIDs[start:end]).
 			Updates(map[string]any{"is_deleted": true, "deleted_at": now}).Error; err != nil {
@@ -313,7 +332,7 @@ func upsertUsageIdentities(tx *gorm.DB, identities []models.UsageIdentity) error
 		return nil
 	}
 
-	// 使用相同的冲突更新语义，CPA 本次返回的身份需要恢复为 active，同时保留历史统计字段。
+	// 冲突时只刷新 CPA 当前能提供的元数据，并恢复 deleted row；统计字段和预留的窗口/限额字段不在这里覆盖。
 	if err := tx.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "auth_type"}, {Name: "identity"}},
 		DoUpdates: clause.Assignments(map[string]any{
@@ -322,11 +341,16 @@ func upsertUsageIdentities(tx *gorm.DB, identities []models.UsageIdentity) error
 			"type":           gorm.Expr("excluded.type"),
 			"provider":       gorm.Expr("excluded.provider"),
 			"lookup_key":     gorm.Expr("excluded.lookup_key"),
+			"prefix":         gorm.Expr("excluded.prefix"),
+			"account_id":     gorm.Expr("excluded.account_id"),
+			"active_start":   gorm.Expr("excluded.active_start"),
+			"active_until":   gorm.Expr("excluded.active_until"),
+			"plan_type":      gorm.Expr("excluded.plan_type"),
 			"is_deleted":     false,
 			"deleted_at":     nil,
 			"updated_at":     gorm.Expr("excluded.updated_at"),
 		}),
-	}).CreateInBatches(&identities, defaultRepositoryInsertBatchSize).Error; err != nil {
+	}).CreateInBatches(&identities, insertBatchSize(models.UsageIdentity{})).Error; err != nil {
 		return fmt.Errorf("upsert usage identities: %w", err)
 	}
 	return nil

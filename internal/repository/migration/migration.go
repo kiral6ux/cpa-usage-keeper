@@ -22,6 +22,7 @@ const (
 	migrationAddUsageIdentityLookupKey              = "20260505_add_usage_identity_lookup_key"
 	migrationMigrateAIProviderIdentitiesToAuthIndex = "20260505_migrate_ai_provider_identities_to_auth_index"
 	migrationAddUsagePerformanceIndexes             = "20260506_add_usage_performance_indexes"
+	migrationAddUsageIdentityMetadataFields         = "20260507_add_usage_identity_metadata_fields"
 )
 
 type schemaMigration struct {
@@ -88,6 +89,7 @@ func orderedMigrations() []databaseMigration {
 		{version: migrationAddUsageIdentityLookupKey, run: addUsageIdentityLookupKeyMigration},
 		{version: migrationMigrateAIProviderIdentitiesToAuthIndex, run: migrateAIProviderIdentitiesToAuthIndexMigration},
 		{version: migrationAddUsagePerformanceIndexes, run: addUsagePerformanceIndexesMigration},
+		{version: migrationAddUsageIdentityMetadataFields, run: addUsageIdentityMetadataFieldsMigration},
 	}
 }
 

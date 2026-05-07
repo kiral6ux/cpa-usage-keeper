@@ -113,6 +113,74 @@ func TestUsageIdentitiesRouteReturnsMetadataStatsAndDeletedRows(t *testing.T) {
 	}
 }
 
+func TestUsageIdentitiesRouteDoesNotReturnUnpublishedMetadataFields(t *testing.T) {
+	activeStart := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+	activeUntil := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	accountID := "acct_123"
+	planType := "team"
+	limitReached := true
+	primaryUsed := 80
+	primaryLimit := 18000
+	primaryResetSeconds := 3600
+	primaryResetAt := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	secondaryUsed := 20
+	secondaryLimit := 604800
+	secondaryResetSeconds := 86400
+	secondaryResetAt := time.Date(2026, 5, 8, 12, 0, 0, 0, time.UTC)
+	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "", usageIdentitiesStub{items: []models.UsageIdentity{{
+		ID:                          1,
+		Name:                        "Codex Account",
+		AuthType:                    models.UsageIdentityAuthTypeAuthFile,
+		AuthTypeName:                "oauth",
+		Identity:                    "codex-auth",
+		Type:                        "codex",
+		Provider:                    "Codex",
+		Prefix:                      "codex-prefix",
+		AccountID:                   &accountID,
+		ActiveStart:                 &activeStart,
+		ActiveUntil:                 &activeUntil,
+		PlanType:                    &planType,
+		LimitReached:                &limitReached,
+		PrimaryWindowUsedPercent:    &primaryUsed,
+		PrimaryWindowLimitSeconds:   &primaryLimit,
+		PrimaryWindowResetSeconds:   &primaryResetSeconds,
+		PrimaryWindowResetAt:        &primaryResetAt,
+		SecondaryWindowUsedPercent:  &secondaryUsed,
+		SecondaryWindowLimitSeconds: &secondaryLimit,
+		SecondaryWindowResetSeconds: &secondaryResetSeconds,
+		SecondaryWindowResetAt:      &secondaryResetAt,
+	}}})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/identities", nil)
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	body := resp.Body.String()
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", resp.Code, body)
+	}
+	for _, forbidden := range []string{
+		`"prefix"`,
+		`"account_id"`,
+		`"active_start"`,
+		`"active_until"`,
+		`"plan_type"`,
+		`"limit_reached"`,
+		`"primary_window_used_percent"`,
+		`"primary_window_limit_seconds"`,
+		`"primary_window_reset_seconds"`,
+		`"primary_window_reset_at"`,
+		`"secondary_window_used_percent"`,
+		`"secondary_window_limit_seconds"`,
+		`"secondary_window_reset_seconds"`,
+		`"secondary_window_reset_at"`,
+	} {
+		if contains(body, forbidden) {
+			t.Fatalf("expected API response not to include %s, got %s", forbidden, body)
+		}
+	}
+}
+
 func TestUsageIdentitiesRouteMasksAIProviderIdentity(t *testing.T) {
 	rawLookupKey := "sk-live-secret-value"
 	rawPrefix := "sk-live-prefix"

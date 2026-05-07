@@ -95,17 +95,25 @@ type AuthFilesResponse struct {
 }
 
 type AuthFile struct {
-	AuthIndex   string `json:"auth_index"`
-	Name        string `json:"name"`
-	Email       string `json:"email"`
-	Type        string `json:"type"`
-	Provider    string `json:"provider"`
-	Label       string `json:"label"`
-	Status      string `json:"status"`
-	Source      string `json:"source"`
-	Disabled    bool   `json:"disabled"`
-	Unavailable bool   `json:"unavailable"`
-	RuntimeOnly bool   `json:"runtime_only"`
+	AuthIndex   string           `json:"auth_index"`
+	Name        string           `json:"name"`
+	Email       string           `json:"email"`
+	Type        string           `json:"type"`
+	Provider    string           `json:"provider"`
+	Label       string           `json:"label"`
+	Status      string           `json:"status"`
+	Source      string           `json:"source"`
+	Disabled    bool             `json:"disabled"`
+	Unavailable bool             `json:"unavailable"`
+	RuntimeOnly bool             `json:"runtime_only"`
+	IDToken     *AuthFileIDToken `json:"id_token"`
+}
+
+type AuthFileIDToken struct {
+	AccountID   *string    `json:"chatgpt_account_id"`
+	ActiveStart *time.Time `json:"chatgpt_subscription_active_start"`
+	ActiveUntil *time.Time `json:"chatgpt_subscription_active_until"`
+	PlanType    *string    `json:"plan_type"`
 }
 
 type UsageQueueResult struct {
