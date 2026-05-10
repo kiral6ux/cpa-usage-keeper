@@ -57,10 +57,12 @@ func NewServiceWithRegistry(db *gorm.DB, registry ProviderRegistry) *Service {
 }
 
 func (s *Service) Check(ctx context.Context, request CheckRequest) (CheckResponse, error) {
+	// 单条查询以 auth_index 为唯一入口，前端不需要知道具体 provider 的 API 细节。
 	authIndex := strings.TrimSpace(request.AuthIndex)
 	if authIndex == "" {
 		return CheckResponse{}, fmt.Errorf("%w: auth_index is required", ErrValidation)
 	}
+	// 只允许 auth files 身份查询限额，AI provider 身份不进入 provider 调用链路。
 	identity, err := repository.GetActiveAuthFileUsageIdentityByAuthIndex(ctx, s.db, authIndex)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -68,10 +70,12 @@ func (s *Service) Check(ctx context.Context, request CheckRequest) (CheckRespons
 		}
 		return CheckResponse{}, err
 	}
+	// 按相邻项目规则先匹配 provider 再匹配 type，解析出实际要调用的 quota handler。
 	_, handler, ok := s.resolveQuotaHandler(identity.Provider, identity.Type)
 	if !ok {
 		return CheckResponse{}, fmt.Errorf("%w: %s", ErrUnsupportedType, normalizeIdentityType(identity.Provider))
 	}
+	// provider 返回各自原始结构后，再统一转换为前端可复用的 quota rows。
 	providerOutput, err := handler.Check(ctx, ProviderInput{Identity: identity})
 	if err != nil {
 		return CheckResponse{}, err

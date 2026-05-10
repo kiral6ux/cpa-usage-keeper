@@ -37,6 +37,7 @@ export function useQuotaRefreshTasks({ enabled, currentAuthIndexes, setQuotaByAu
   const [batchRefreshSubmitting, setBatchRefreshSubmitting] = useState(false)
   const [quotaRefreshError, setQuotaRefreshError] = useState('')
   const quotaRefreshing = useMemo(
+    // 右上角批量按钮只跟批量任务相关；单行刷新不占用全局刷新状态。
     () => batchRefreshSubmitting || pendingRefreshTasks.some((task) => task.source === 'batch'),
     [batchRefreshSubmitting, pendingRefreshTasks],
   )
@@ -49,6 +50,7 @@ export function useQuotaRefreshTasks({ enabled, currentAuthIndexes, setQuotaByAu
     let timer: number | undefined
     const controller = new AbortController()
     const poll = async () => {
+      // 一轮轮询内同时查询所有未完成 task，再统一合并状态和 quota 缓存。
       const settledAuthIndexes = new Set<string>()
       const stateUpdates: Record<string, QuotaState> = {}
       const quotaUpdates: Record<string, UsageQuotaRow[]> = {}
@@ -92,6 +94,7 @@ export function useQuotaRefreshTasks({ enabled, currentAuthIndexes, setQuotaByAu
         return
       }
       if (Object.keys(quotaUpdates).length > 0) {
+        // 已完成任务的 quota 直接写入缓存，行视图会自动用最新缓存重算。
         setQuotaByAuthIndex((current) => ({ ...current, ...quotaUpdates }))
       }
       if (Object.keys(stateUpdates).length > 0) {
@@ -100,6 +103,7 @@ export function useQuotaRefreshTasks({ enabled, currentAuthIndexes, setQuotaByAu
       if (settledAuthIndexes.size > 0) {
         setPendingRefreshTasks((current) => current.filter((task) => !settledAuthIndexes.has(task.authIndex)))
       }
+      // 当前轮完成后再延迟下一轮，避免请求慢时多个轮询批次重叠。
       timer = window.setTimeout(() => {
         void poll()
       }, 5_000)
@@ -126,6 +130,7 @@ export function useQuotaRefreshTasks({ enabled, currentAuthIndexes, setQuotaByAu
     }
     try {
       const response = await refreshUsageQuotas(authIndexes)
+      // 后端返回的是每个 auth_index 对应的独立 task，前端按 auth_index 去重保存。
       setPendingRefreshTasks((current) => {
         const nextByAuthIndex = new Map(current.map((task) => [task.authIndex, task]))
         for (const task of response.tasks) {
@@ -166,6 +171,7 @@ export function useQuotaRefreshTasks({ enabled, currentAuthIndexes, setQuotaByAu
   }, [onAuthRequired])
 
   const refreshQuotaForCurrentAuthFilePage = useCallback(async () => {
+    // 批量刷新只提交当前页且未在工作的条目，单行刷新中的任务不会重复入队。
     const refreshableAuthIndexes = currentAuthIndexes.filter((authIndex) => !isQuotaRefreshWorking(quotaStateByAuthIndex[authIndex]))
     await startQuotaRefresh(refreshableAuthIndexes.slice(0, CREDENTIALS_PAGE_SIZE), 'batch')
   }, [currentAuthIndexes, quotaStateByAuthIndex, startQuotaRefresh])

@@ -117,6 +117,7 @@ func ListActiveUsageIdentitiesPage(ctx context.Context, db *gorm.DB, request Lis
 		pageSize = 10
 	}
 
+	// 先在同一过滤条件下统计总数，再追加 offset/limit 取当前页数据。
 	query := activeUsageIdentitiesQuery(db.WithContext(ctx), request.AuthType)
 	var total int64
 	if err := query.Model(&entities.UsageIdentity{}).Count(&total).Error; err != nil {
@@ -130,6 +131,7 @@ func ListActiveUsageIdentitiesPage(ctx context.Context, db *gorm.DB, request Lis
 }
 
 func activeUsageIdentitiesQuery(db *gorm.DB, authType *entities.UsageIdentityAuthType) *gorm.DB {
+	// 把活跃条件和可选 auth_type 条件集中到一个查询构造器，避免 count/list 条件漂移。
 	query := db.Where("is_deleted = ?", false)
 	if authType != nil {
 		query = query.Where("auth_type = ?", *authType)

@@ -162,6 +162,7 @@ export async function fetchUsageIdentities(signal?: AbortSignal): Promise<UsageI
 }
 
 export async function fetchUsageIdentitiesPage(signal?: AbortSignal, options?: FetchUsageIdentitiesPageOptions): Promise<UsageIdentitiesPageResponse> {
+  // Credentials 两个分区共用分页接口，通过 auth_type 控制服务端过滤。
   const params = new URLSearchParams()
   if (options?.authType) {
     params.set('auth_type', String(options.authType))
@@ -196,6 +197,7 @@ export async function fetchUsageQuotaCheck(authIndex: string, signal?: AbortSign
 }
 
 export async function fetchUsageQuotaCache(authIndexes: string[], signal?: AbortSignal): Promise<UsageQuotaCacheResponse> {
+  // cache 只读后端已有结果，不携带刷新 limit，避免把缓存读取误当队列提交。
   const response = await apiFetch(apiPath('/quota/cache'), {
     method: 'POST',
     headers: {
@@ -211,6 +213,7 @@ export async function fetchUsageQuotaCache(authIndexes: string[], signal?: Abort
 }
 
 export async function refreshUsageQuotas(authIndexes: string[], signal?: AbortSignal): Promise<UsageQuotaRefreshResponse> {
+  // refresh 会创建后台任务，前端固定提交当前页上限，真正上限仍由后端入口校验。
   const response = await apiFetch(apiPath('/quota/refresh'), {
     method: 'POST',
     headers: {

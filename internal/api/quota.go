@@ -27,6 +27,7 @@ func registerQuotaRoutes(router gin.IRoutes, provider QuotaProvider) {
 			return
 		}
 
+		// 先解析并校验 auth_index，避免空值进入后端身份解析流程。
 		var request quotaCheckRequest
 		if err := c.ShouldBindJSON(&request); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "auth_index is required"})
@@ -38,6 +39,7 @@ func registerQuotaRoutes(router gin.IRoutes, provider QuotaProvider) {
 			return
 		}
 
+		// 统一把 service 层错误映射为前端可展示的 HTTP 状态和提示文案。
 		response, err := provider.Check(c.Request.Context(), quota.CheckRequest{AuthIndex: request.AuthIndex})
 		if err != nil {
 			switch {
@@ -64,6 +66,7 @@ func registerQuotaRoutes(router gin.IRoutes, provider QuotaProvider) {
 			return
 		}
 
+		// 缓存读取只校验查询列表，不套用刷新队列的 20 条上限。
 		var request quotaRefreshRequest
 		if err := c.ShouldBindJSON(&request); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "auth_indexes are required"})
@@ -100,6 +103,7 @@ func registerQuotaRoutes(router gin.IRoutes, provider QuotaProvider) {
 			return
 		}
 
+		// 手动刷新会真正触发 provider 请求，所以在入口层限制当前页最多 20 条。
 		var request quotaRefreshRequest
 		if err := c.ShouldBindJSON(&request); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "auth_indexes are required"})
@@ -150,6 +154,7 @@ func registerQuotaRoutes(router gin.IRoutes, provider QuotaProvider) {
 			return
 		}
 
+		// 前端轮询只根据 task_id 查询任务状态，完成时直接带回缓存中的 quota。
 		response, err := provider.GetRefreshTask(c.Request.Context(), taskID)
 		if err != nil {
 			switch {

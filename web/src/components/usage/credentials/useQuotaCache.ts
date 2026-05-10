@@ -17,6 +17,7 @@ export function useQuotaCache({ enabled, authIndexes, onAuthRequired }: UseQuota
   const [quotaByAuthIndex, setQuotaByAuthIndex] = useState<Record<string, UsageQuotaRow[]>>({})
   const requestControllerRef = useRef<AbortController | null>(null)
   const uncachedAuthIndexes = useMemo(
+    // 页面加载只读缓存；已经读过的 auth_index 不重复请求，避免分页切换时无效调用。
     () => authIndexes.filter((authIndex) => quotaByAuthIndex[authIndex] === undefined),
     [authIndexes, quotaByAuthIndex],
   )
@@ -34,6 +35,7 @@ export function useQuotaCache({ enabled, authIndexes, onAuthRequired }: UseQuota
 
     const controller = new AbortController()
     requestControllerRef.current = controller
+    // 缓存接口不会刷新限额，只把后端已有的完成任务结果同步到当前页。
     void fetchUsageQuotaCache(uncachedAuthIndexes, controller.signal).then((response) => {
       if (controller.signal.aborted || requestControllerRef.current !== controller) {
         return
@@ -42,6 +44,7 @@ export function useQuotaCache({ enabled, authIndexes, onAuthRequired }: UseQuota
         let changed = false
         const next = { ...current }
         const returnedAuthIndexes = new Set(response.items.map((item) => item.id))
+        // 返回的数据写入本地缓存，未返回的条目保持未知状态，不显示假限额。
         for (const item of response.items) {
           if (next[item.id] !== item.quota) {
             next[item.id] = item.quota ?? []

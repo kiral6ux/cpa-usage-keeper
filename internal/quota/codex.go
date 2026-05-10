@@ -17,9 +17,11 @@ func NewCodexProvider(caller ManagementAPICaller, config APICallConfig) Provider
 }
 
 func (p codexProvider) Check(ctx context.Context, input ProviderInput) (ProviderOutput, error) {
+	// Codex quota 依赖 account_id；缺少时直接返回可展示的参数错误，不发起无效请求。
 	if input.Identity.AccountID == nil || *input.Identity.AccountID == "" {
 		return ProviderOutput{}, fmt.Errorf("%w: missing account_id parameter", ErrProviderInput)
 	}
+	// 统一调用 CPA api-call，由后端补齐固定 URL/header 和当前账号的动态 header。
 	request := apicall.Request{
 		AuthIndex: input.Identity.Identity,
 		Method:    p.config.Method,

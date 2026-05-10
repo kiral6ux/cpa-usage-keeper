@@ -8,6 +8,7 @@ import (
 )
 
 func NormalizeQuotaRows(output ProviderOutput) []QuotaRow {
+	// 不在 provider 层强行统一原始结构，只在出口处转换为前端展示需要的 quota rows。
 	switch result := output.Result.(type) {
 	case AntigravityResult:
 		return normalizeAntigravityQuotaRows(result)
@@ -89,6 +90,7 @@ func appendClaudeWindowQuotaRow(rows []QuotaRow, key string, label string, scope
 }
 
 func normalizeCodexQuotaRows(result CodexResult) []QuotaRow {
+	// Codex 根据 limit_window_seconds 明确区分 5h/Weekly；未知窗口只标记 Window，不猜测。
 	if result.Usage == nil {
 		return nil
 	}
@@ -96,6 +98,7 @@ func normalizeCodexQuotaRows(result CodexResult) []QuotaRow {
 	rows = appendCodexWindowQuotaRows(rows, "rate_limit", "5h", "Weekly", "window", "", result.Usage.RateLimit)
 	rows = appendCodexWindowQuotaRows(rows, "code_review_rate_limit", "Code Review 5h", "Code Review Weekly", "code_review", "", result.Usage.CodeReviewRateLimit)
 	for _, additional := range result.Usage.AdditionalRateLimits {
+		// 主限额之外的 code review / spark 等窗口也保留为 extra quota，避免丢失上游数据。
 		metric := additional.MeteredFeature
 		if metric == "" {
 			metric = additional.LimitName
@@ -146,6 +149,7 @@ func codexUnknownWindowLabel(label string) string {
 }
 
 func appendCodexWindowQuotaRow(rows []QuotaRow, key string, label string, scope string, metric string, info *CodexRateLimitInfo, window *CodexUsageWindow) []QuotaRow {
+	// 每个窗口单独展开为一条 quota row，前端再按窗口秒数决定主/次展示位置。
 	if window == nil {
 		return rows
 	}
@@ -170,6 +174,7 @@ func appendCodexWindowQuotaRow(rows []QuotaRow, key string, label string, scope 
 }
 
 func normalizeGeminiCLIQuotaRows(result GeminiCLIResult) []QuotaRow {
+	// Gemini CLI 同时可能返回模型桶和 Code Assist credits，两类都平铺给前端。
 	rows := make([]QuotaRow, 0)
 	if result.Quota != nil {
 		for _, bucket := range result.Quota.Buckets {
@@ -235,6 +240,7 @@ func normalizeAntigravityQuotaRows(result AntigravityResult) []QuotaRow {
 }
 
 func normalizeKimiQuotaRows(result KimiResult) []QuotaRow {
+	// Kimi 的 summary 和 limits 结构不同，先保留 summary，再逐条展开 limits。
 	if result.Usage == nil {
 		return nil
 	}

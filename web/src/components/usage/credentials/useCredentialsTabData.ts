@@ -38,8 +38,10 @@ export interface CredentialsTabData {
 }
 
 export function useCredentialsTabData({ enabled, onAuthRequired }: UseCredentialsTabDataOptions): CredentialsTabData {
+  // 页面 hook 只编排分页、缓存和刷新任务三层数据，不直接发散 API 调用。
   const credentialPages = useCredentialPages({ enabled, onAuthRequired })
   const currentAuthIndexes = useMemo(
+    // quota 只对当前 Auth Files 页生效，AI Provider 不参与缓存读取和刷新。
     () => selectQuotaEligibleAuthIndexes(credentialPages.authFileIdentities),
     [credentialPages.authFileIdentities],
   )
@@ -55,6 +57,7 @@ export function useCredentialsTabData({ enabled, onAuthRequired }: UseCredential
     onAuthRequired,
   })
 
+  // 把对象状态转成 Map 后交给纯 view model，组件层只消费已组合好的行数据。
   const quotaRowsByAuthIndex = useMemo(() => new Map(Object.entries(quotaByAuthIndex)), [quotaByAuthIndex])
   const quotaStates = useMemo(() => new Map(Object.entries(quotaRefreshTasks.quotaStateByAuthIndex).map(([authIndex, state]) => [authIndex, {
     quotaLoading: state.loading ?? false,

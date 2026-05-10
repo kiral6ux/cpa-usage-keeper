@@ -108,6 +108,7 @@ export function paginateCredentials<T>(items: T[], page: number, pageSize = CRED
 }
 
 export function buildAuthFileCredentialRows(
+  // Auth Files 行合并 usage identity、缓存 quota 和刷新任务状态，组件不再重复拼装字段。
   identities: UsageIdentity[],
   quotas: Map<string, UsageQuotaRow[]> = new Map(),
   quotaStates: Map<string, Pick<AuthFileCredentialRow, 'quotaLoading' | 'quotaError' | 'refreshTaskId' | 'refreshStatus'>> = new Map(),
@@ -116,6 +117,7 @@ export function buildAuthFileCredentialRows(
     const quota = quotas.get(identity.identity) ?? []
     const state = quotaStates.get(identity.identity)
     const displayQuotas = quota.map(toDisplayQuota)
+    // 先挑 5h 主窗口，再挑 Weekly 次窗口，其余限额保留到 chips 中展示。
     const primaryQuota = displayQuotas.find(isPrimaryQuota)
     const secondaryQuota = displayQuotas.find((item) => item !== primaryQuota && isSecondaryQuota(item))
     const extraQuota = displayQuotas.filter((item) => item !== primaryQuota && item !== secondaryQuota)
@@ -168,6 +170,7 @@ export function buildAiProviderCredentialRows(identities: UsageIdentity[]): AiPr
 }
 
 function toDisplayQuota(row: UsageQuotaRow): DisplayQuota {
+  // 后端 quota row 可能是 used、remaining 或 remainingFraction，这里统一成展示进度。
   const used = finiteNumber(row.used)
   const limit = finiteNumber(row.limit)
   const remaining = finiteNumber(row.remaining)
@@ -192,6 +195,7 @@ function toDisplayQuota(row: UsageQuotaRow): DisplayQuota {
 }
 
 function quotaLabel(row: UsageQuotaRow, windowSeconds?: number): string {
+  // 对已知窗口按秒数纠正标签；未知窗口不猜 5h/Weekly，避免误导用户。
   const label = row.label || row.metric || row.scope || row.key
   if (windowSeconds === 604800 && label.includes('5h')) {
     return label.replace('5h', 'Weekly')
@@ -219,6 +223,7 @@ function unknownWindowLabel(label: string): string {
 }
 
 function quotaPercent(row: UsageQuotaRow, used?: number, limit?: number): { percent: number | null; kind: DisplayQuota['percentKind'] } {
+  // 优先使用 provider 已给出的百分比；没有时才用 used/limit 推导。
   const usedPercent = finiteNumber(row.usedPercent)
   if (usedPercent !== undefined) {
     return { percent: clampPercent(usedPercent), kind: 'used' }
@@ -251,6 +256,7 @@ function quotaStatus(row: UsageQuotaRow, percent: number | null, kind: DisplayQu
 }
 
 function quotaBarPercent(percent: number | null, kind: DisplayQuota['percentKind']): number | null {
+  // 进度条表达“剩余额度”：已用越高条越短，剩余比例则直接使用。
   if (percent === null) {
     return null
   }
@@ -301,6 +307,7 @@ function credentialPlanTypeLabel(planType?: string): string | undefined {
 }
 
 function credentialPlanTypeTone(planType?: string): PlanTypeTone | undefined {
+  // planType 展示只做宽松匹配和样式分类，不改变后端原始字段。
   const normalized = planType?.trim().toLowerCase()
   if (!normalized) {
     return undefined

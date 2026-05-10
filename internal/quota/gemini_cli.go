@@ -18,6 +18,7 @@ func NewGeminiCLIProvider(caller ManagementAPICaller, config APICallConfig, code
 }
 
 func (p geminiCLIProvider) Check(ctx context.Context, input ProviderInput) (ProviderOutput, error) {
+	// Gemini CLI 主 quota 和 Code Assist 都依赖 project_id，缺少时不发起上游请求。
 	if input.Identity.ProjectID == nil || *input.Identity.ProjectID == "" {
 		return ProviderOutput{}, fmt.Errorf("%w: missing project_id parameter", ErrProviderInput)
 	}
@@ -35,11 +36,13 @@ func (p geminiCLIProvider) Check(ctx context.Context, input ProviderInput) (Prov
 	if err != nil {
 		return ProviderOutput{}, err
 	}
+	// Code Assist 是补充数据，失败时不影响主 quota 的展示。
 	codeAssist := p.checkCodeAssist(ctx, input)
 	return ProviderOutput{Provider: "gemini-cli", Result: GeminiCLIResult{Quota: quota, CodeAssist: codeAssist}}, nil
 }
 
 func (p geminiCLIProvider) checkCodeAssist(ctx context.Context, input ProviderInput) *GeminiCLICodeAssistPayload {
+	// 补充查询采用静默降级，避免 Code Assist 不可用时整行限额失败。
 	response, err := p.caller.CallManagementAPI(ctx, apicall.Request{
 		AuthIndex: input.Identity.Identity,
 		Method:    p.codeAssistConfig.Method,

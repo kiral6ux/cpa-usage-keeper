@@ -60,6 +60,7 @@ func registerUsageIdentityRoutes(router gin.IRoutes, usageIdentityProvider servi
 			return
 		}
 
+		// 分页接口专供 Credentials 分区使用，按 auth_type 在服务端过滤后再分页。
 		request, ok := parseUsageIdentitiesPageRequest(c)
 		if !ok {
 			return
@@ -70,6 +71,7 @@ func registerUsageIdentityRoutes(router gin.IRoutes, usageIdentityProvider servi
 			return
 		}
 
+		// 复用统一响应映射，保证分页接口和旧列表接口的字段/脱敏规则一致。
 		response := make([]usageIdentityResponse, 0, len(result.Items))
 		for _, item := range result.Items {
 			response = append(response, mapUsageIdentityResponse(item))
@@ -104,6 +106,7 @@ func registerUsageIdentityRoutes(router gin.IRoutes, usageIdentityProvider servi
 }
 
 func parseUsageIdentitiesPageRequest(c *gin.Context) (service.ListUsageIdentitiesRequest, bool) {
+	// page/page_size 做宽松兜底，auth_type 做严格校验，避免前端分区拿到混合数据。
 	page := positiveQueryInt(c, "page", 1)
 	pageSize := positiveQueryInt(c, "page_size", 10)
 	request := service.ListUsageIdentitiesRequest{Page: page, PageSize: pageSize}
@@ -135,6 +138,7 @@ func totalPages(total int64, pageSize int) int {
 }
 
 func mapUsageIdentityResponse(item entities.UsageIdentity) usageIdentityResponse {
+	// AI provider 的 identity 是 API Key，只在返回给前端时脱敏，数据库原值不改。
 	identity := item.Identity
 	if item.AuthType == entities.UsageIdentityAuthTypeAIProvider {
 		identity = redact.APIKeyDisplayName(item.Identity)

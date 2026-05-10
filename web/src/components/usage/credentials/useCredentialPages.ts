@@ -38,6 +38,7 @@ export function useCredentialPages({ enabled, onAuthRequired }: UseCredentialPag
   const requestControllerRef = useRef<AbortController | null>(null)
 
   const refresh = useCallback(async () => {
+    // 每次刷新先取消旧请求，避免切页后旧响应覆盖新页数据。
     requestControllerRef.current?.abort()
     const controller = new AbortController()
     requestControllerRef.current = controller
@@ -45,6 +46,7 @@ export function useCredentialPages({ enabled, onAuthRequired }: UseCredentialPag
     setLoading(true)
     setError('')
     try {
+      // Auth Files 和 AI Provider 分别按 auth_type 请求，分页互不影响。
       const [authFiles, aiProviders] = await Promise.all([
         fetchUsageIdentitiesPage(controller.signal, { authType: 1, page: authFilePage, pageSize: CREDENTIALS_PAGE_SIZE }),
         fetchUsageIdentitiesPage(controller.signal, { authType: 2, page: aiProviderPage, pageSize: CREDENTIALS_PAGE_SIZE }),
@@ -67,6 +69,7 @@ export function useCredentialPages({ enabled, onAuthRequired }: UseCredentialPag
         return
       }
       if (requestControllerRef.current === controller) {
+        // 只有当前请求失败才清空页面数据，过期请求失败不影响最新状态。
         setAuthFileIdentities([])
         setAiProviderIdentities([])
         setAuthFileTotal(0)

@@ -989,6 +989,7 @@ export function UsagePage({ onAuthRequired }: { onAuthRequired?: () => void }) {
     const parsed = new Date(status.last_run_at);
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   }, [status?.last_run_at]);
+  // 只有需要时间范围的 tab 才渲染 Range 控件，避免 Credentials/Pricing 产生空白占位。
   const showRangeControls = shouldShowRangeControls(activeTab);
   const {
     requestsSparkline,
@@ -1228,6 +1229,7 @@ export function UsagePage({ onAuthRequired }: { onAuthRequired?: () => void }) {
                       ariaLabel={t('usage_stats.range_filter')}
                       fullWidth={false}
                     />
+                    {/* 自定义日期只在 Custom 模式挂载，非自定义范围保持工具栏内容宽度。 */}
                     {isCustomRange && (
                       <div className={`${styles.customRangeInline} ${styles.customRangeInlineOpen}`.trim()}>
                         <div className={styles.customRangeFields}>

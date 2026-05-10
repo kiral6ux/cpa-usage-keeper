@@ -17,6 +17,7 @@ func NewClaudeProvider(caller ManagementAPICaller, usageConfig APICallConfig, pr
 }
 
 func (p claudeProvider) Check(ctx context.Context, input ProviderInput) (ProviderOutput, error) {
+	// Claude 需要先取 usage，再取 profile；profile 中包含前端标签展示需要的信息。
 	usageResponse, err := p.caller.CallManagementAPI(ctx, apicall.Request{
 		AuthIndex: input.Identity.Identity,
 		Method:    p.usageConfig.Method,
@@ -30,6 +31,7 @@ func (p claudeProvider) Check(ctx context.Context, input ProviderInput) (Provide
 	if err != nil {
 		return ProviderOutput{}, err
 	}
+	// usage 解析成功后再查询 profile，避免 profile 请求掩盖主限额接口错误。
 	profileResponse, err := p.caller.CallManagementAPI(ctx, apicall.Request{
 		AuthIndex: input.Identity.Identity,
 		Method:    p.profileConfig.Method,

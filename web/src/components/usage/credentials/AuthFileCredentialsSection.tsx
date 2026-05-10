@@ -41,6 +41,7 @@ export function AuthFileCredentialsSection({ rows, total, page, totalPages, load
         </button>
       )}
     >
+      {/* 批量刷新失败显示在区块顶部，单行任务失败显示在对应限额位置。 */}
       {quotaRefreshError && <div className={styles.credentialInlineError}>{quotaRefreshError}</div>}
       {loading && rows.length === 0 && <div className={styles.credentialEmptyState}>{t('common.loading')}</div>}
       {!loading && rows.length === 0 && <div className={styles.credentialEmptyState}>{t('usage_stats.credentials_auth_files_empty')}</div>}
@@ -100,6 +101,7 @@ function CredentialPlanBadge({ children, tone = 'neutral' }: { children: string;
 function AuthFileQuotaPanel({ row }: { row: AuthFileCredentialRow }) {
   const { t } = useTranslation()
 
+  // 限额区域按加载、错误、刷新中、无缓存、可展示数据的顺序降级。
   if (row.quotaLoading) {
     return <div className={styles.credentialQuotaState}>{t('usage_stats.credentials_quota_loading')}</div>
   }
@@ -116,6 +118,7 @@ function AuthFileQuotaPanel({ row }: { row: AuthFileCredentialRow }) {
   return (
     <div className={styles.credentialQuotaPanel}>
       <div className={styles.credentialQuotaBars}>
+        {/* 主/次窗口固定优先展示，额外窗口放到下方 chips，避免宽度被无限撑开。 */}
         {row.primaryQuota && <QuotaBar quota={row.primaryQuota} />}
         {row.secondaryQuota && <QuotaBar quota={row.secondaryQuota} />}
       </div>
@@ -134,6 +137,7 @@ function AuthFileQuotaPanel({ row }: { row: AuthFileCredentialRow }) {
 }
 
 export function formatQuotaResetLabel(resetAt: string): string {
+  // 重置时间同时给相对剩余时长和绝对时间，供进度条右上角轮播展示。
   const resetTime = new Date(resetAt)
   const resetMs = resetTime.getTime()
   if (!Number.isFinite(resetMs)) {
@@ -152,6 +156,7 @@ export function formatQuotaResetLabel(resetAt: string): string {
 }
 
 function QuotaBar({ quota }: { quota: DisplayQuota }) {
+  // 条宽使用剩余额度百分比，颜色跟随剩余风险状态从绿到黄到红。
   const { t } = useTranslation()
   const percent = quota.barPercent ?? 0
   const width = `${Math.max(0, Math.min(100, percent))}%`
