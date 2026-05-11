@@ -6,9 +6,9 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Select } from '@/components/ui/Select';
 import type { UsageEvent, UsageSourceFilterOption } from '@/lib/types';
 import {
+  calculateCost,
   formatDurationMs,
   formatUsd,
-  isAnthropicStyleProvider,
   LATENCY_SOURCE_FIELD,
   normalizeAuthIndex,
   type ModelPrice,
@@ -144,14 +144,23 @@ export function RequestEventsDetailsCard({
       const totalTokens = Math.max(toNumber(event.tokens?.total_tokens), 0);
       const latencyMs = Number.isFinite(event.latency_ms) ? event.latency_ms : null;
       const pricing = modelPrices[model];
-      const promptTokens = isAnthropicStyleProvider(sourceType)
-        ? inputTokens
-        : Math.max(inputTokens - cachedTokens, 0);
-      const cost = pricing
-        ? (promptTokens / 1_000_000) * pricing.prompt +
-          (outputTokens / 1_000_000) * pricing.completion +
-          (cachedTokens / 1_000_000) * pricing.cache
-        : 0;
+      const cost = calculateCost({
+        timestamp,
+        source,
+        source_raw: sourceRaw,
+        source_type: sourceType,
+        auth_index: authIndex,
+        failed: event.failed === true,
+        latency_ms: latencyMs ?? 0,
+        tokens: {
+          input_tokens: inputTokens,
+          output_tokens: outputTokens,
+          reasoning_tokens: reasoningTokens,
+          cached_tokens: cachedTokens,
+          total_tokens: totalTokens,
+        },
+        __modelName: model,
+      }, modelPrices);
 
       return {
         id: event.id ? String(event.id) : `${timestamp}-${model}-${sourceRaw || source}-${authIndex}-${index}`,

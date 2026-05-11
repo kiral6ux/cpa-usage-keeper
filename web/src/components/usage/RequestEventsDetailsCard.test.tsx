@@ -142,4 +142,15 @@ describe('RequestEventsDetailsCard pagination', () => {
     expect(html).not.toContain('Export CSV');
     expect(html).not.toContain('Export JSON');
   });
+
+  it('shows per-event cost when model pricing exists', () => {
+    const html = renderCard({
+      modelPrices: {
+        'claude-sonnet': { prompt: 15, completion: 75, cache: 1.5 },
+      },
+    });
+
+    expect(html).toContain('Total Cost');
+    expect(html).toContain('$0.0057');
+  });
 });
