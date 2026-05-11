@@ -34,6 +34,8 @@ func TestOrderedMigrationsPreservesExecutionOrder(t *testing.T) {
 		"20260507_add_usage_identity_metadata_fields",
 		"20260508_add_usage_event_model_alias",
 		"20260509_add_usage_identity_base_url",
+		"20260509_update_usage_identity_quota_fields",
+		"20260510_remove_usage_identity_quota_fields",
 	}
 	if len(got) != len(want) {
 		t.Fatalf("expected ordered migrations %v, got %v", want, got)
@@ -85,6 +87,8 @@ func TestOpenDatabaseRunsSchemaMigrationsAndAddsUsageEventRedisFields(t *testing
 		"20260507_add_usage_identity_metadata_fields",
 		"20260508_add_usage_event_model_alias",
 		"20260509_add_usage_identity_base_url",
+		"20260509_update_usage_identity_quota_fields",
+		"20260510_remove_usage_identity_quota_fields",
 	}
 	if len(versions) != len(expected) {
 		t.Fatalf("expected migration versions %v, got %v", expected, versions)
@@ -110,8 +114,9 @@ func TestOpenDatabaseMigrationsAreIdempotent(t *testing.T) {
 	if err := db.Table("schema_migrations").Count(&count).Error; err != nil {
 		t.Fatalf("count schema migrations: %v", err)
 	}
-	if count != 16 {
-		t.Fatalf("expected 16 applied migrations after reopening database, got %d", count)
+	expectedCount := int64(len(orderedMigrations()))
+	if count != expectedCount {
+		t.Fatalf("expected %d applied migrations after reopening database, got %d", expectedCount, count)
 	}
 }
 
