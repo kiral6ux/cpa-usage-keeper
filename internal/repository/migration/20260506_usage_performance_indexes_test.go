@@ -18,14 +18,10 @@ func TestOpenDatabaseAddsUsagePerformanceIndexes(t *testing.T) {
 
 	for _, indexName := range []string{
 		"idx_usage_events_timestamp_id",
-		"idx_usage_events_trim_model",
-		"idx_usage_events_trim_source",
-		"idx_usage_events_trim_auth_index",
-		"idx_usage_events_trim_provider",
-		"idx_usage_events_trim_auth_type",
-		"idx_usage_events_trim_api_group_key",
+		"idx_usage_events_api_group_key",
+		"idx_usage_events_auth_index",
+		"idx_usage_events_model",
 		"idx_usage_events_auth_type_auth_index_id",
-		"idx_usage_events_auth_type_source_id",
 		"idx_redis_usage_inboxes_status_id",
 		"idx_redis_usage_inboxes_status_processed_at",
 		"idx_redis_usage_inboxes_status_updated_at",
@@ -40,9 +36,14 @@ func TestOpenDatabaseAddsUsagePerformanceIndexes(t *testing.T) {
 
 	for _, indexName := range []string{
 		"idx_usage_events_timestamp",
-		"idx_usage_events_api_group_key",
 		"idx_usage_events_source",
-		"idx_usage_events_auth_index",
+		"idx_usage_events_trim_model",
+		"idx_usage_events_trim_source",
+		"idx_usage_events_trim_auth_index",
+		"idx_usage_events_trim_provider",
+		"idx_usage_events_trim_auth_type",
+		"idx_usage_events_trim_api_group_key",
+		"idx_usage_events_auth_type_source_id",
 		"idx_redis_usage_inboxes_status",
 		"idx_redis_usage_inboxes_queue_key",
 		"idx_redis_usage_inboxes_message_hash",
@@ -105,39 +106,22 @@ func TestUsagePerformanceIndexesSupportRepresentativeQueryPlans(t *testing.T) {
 		ORDER BY timestamp DESC, id DESC
 		LIMIT 50`, "2026-05-01T00:00:00Z", "2026-05-07T00:00:00Z")
 
-	assertQueryPlanUsesIndex(t, db, "idx_usage_events_trim_model", `
-		EXPLAIN QUERY PLAN SELECT DISTINCT TRIM(model) FROM usage_events
-		WHERE TRIM(model) <> ''
-		ORDER BY TRIM(model) ASC`)
+	assertQueryPlanUsesIndex(t, db, "idx_usage_events_model", `
+		EXPLAIN QUERY PLAN SELECT DISTINCT model FROM usage_events
+		WHERE model <> ''
+		ORDER BY model ASC`)
 
-	assertQueryPlanUsesIndex(t, db, "idx_usage_events_trim_source", `
-		EXPLAIN QUERY PLAN SELECT DISTINCT TRIM(source) FROM usage_events
-		WHERE TRIM(source) <> ''
-		ORDER BY TRIM(source) ASC`)
-
-	assertQueryPlanUsesIndex(t, db, "idx_usage_events_trim_auth_index", `
+	assertQueryPlanUsesIndex(t, db, "idx_usage_events_auth_index", `
 		EXPLAIN QUERY PLAN SELECT id FROM usage_events
-		WHERE TRIM(auth_index) = ?`, "authidx-main")
+		WHERE auth_index = ?`, "authidx-main")
 
-	assertQueryPlanUsesIndex(t, db, "idx_usage_events_trim_provider", `
-		EXPLAIN QUERY PLAN SELECT id FROM usage_events
-		WHERE TRIM(provider) = ?`, "Claude API")
-
-	assertQueryPlanUsesIndex(t, db, "idx_usage_events_trim_auth_type", `
-		EXPLAIN QUERY PLAN SELECT id FROM usage_events
-		WHERE TRIM(auth_type) = ?`, "oauth")
-
-	assertQueryPlanUsesIndex(t, db, "idx_usage_events_trim_api_group_key", `
-		EXPLAIN QUERY PLAN SELECT TRIM(api_group_key), COUNT(*) FROM usage_events
-		GROUP BY TRIM(api_group_key)`)
+	assertQueryPlanUsesIndex(t, db, "idx_usage_events_api_group_key", `
+		EXPLAIN QUERY PLAN SELECT api_group_key, COUNT(*) FROM usage_events
+		GROUP BY api_group_key`)
 
 	assertQueryPlanUsesIndex(t, db, "idx_usage_events_auth_type_auth_index_id", `
 		EXPLAIN QUERY PLAN SELECT id FROM usage_events
 		WHERE auth_type = ? AND auth_index = ? AND id > ?`, "oauth", "authidx-main", 100)
-
-	assertQueryPlanUsesIndex(t, db, "idx_usage_events_auth_type_source_id", `
-		EXPLAIN QUERY PLAN SELECT id FROM usage_events
-		WHERE auth_type = ? AND source = ? AND id > ?`, "apikey", "authidx-provider", 100)
 
 	assertQueryPlanUsesIndex(t, db, "idx_redis_usage_inboxes_status_id", `
 		EXPLAIN QUERY PLAN SELECT id FROM redis_usage_inboxes

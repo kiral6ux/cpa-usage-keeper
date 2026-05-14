@@ -70,6 +70,9 @@ func TestUsageServiceGetUsageOverviewDelegatesToFilteredOverview(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("InsertUsageEvents returned error: %v", err)
 	}
+	if err := repository.AggregateUsageOverviewStats(context.Background(), db, time.Date(2026, 4, 17, 0, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatalf("AggregateUsageOverviewStats returned error: %v", err)
+	}
 
 	start := time.Date(2026, 4, 16, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 4, 16, 23, 59, 59, 0, time.UTC)
@@ -122,8 +125,14 @@ func TestUsageServiceResolvesAPIKeyIDForUsageQueries(t *testing.T) {
 		t.Fatalf("InsertUsageEvents returned error: %v", err)
 	}
 
+	if err := repository.AggregateUsageOverviewStats(context.Background(), db, time.Date(2026, 4, 16, 12, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatalf("AggregateUsageOverviewStats returned error: %v", err)
+	}
+
+	start := time.Date(2026, 4, 16, 9, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 4, 16, 11, 0, 0, 0, time.UTC)
 	provider := NewUsageService(db)
-	overview, err := provider.GetUsageOverview(context.Background(), servicedto.UsageFilter{APIKeyID: targetID})
+	overview, err := provider.GetUsageOverview(context.Background(), servicedto.UsageFilter{APIKeyID: targetID, Range: "custom", StartTime: &start, EndTime: &end})
 	if err != nil {
 		t.Fatalf("GetUsageOverview returned error: %v", err)
 	}

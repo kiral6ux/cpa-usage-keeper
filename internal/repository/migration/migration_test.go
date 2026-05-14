@@ -40,6 +40,10 @@ func TestOrderedMigrationsPreservesExecutionOrder(t *testing.T) {
 		"20260512_normalize_storage_times_to_project_tz",
 		"20260513_use_int64_primary_keys",
 		"20260513_create_cpa_api_keys",
+		"20260514_add_usage_event_cache_token_fields",
+		"20260514_add_usage_event_plain_dimension_indexes",
+		"20260514_create_usage_overview_stats",
+		"20260514_remove_usage_event_event_key_unique_index",
 	}
 	if len(got) != len(want) {
 		t.Fatalf("expected ordered migrations %v, got %v", want, got)
@@ -96,6 +100,10 @@ func TestOpenDatabaseRunsSchemaMigrationsAndAddsUsageEventRedisFields(t *testing
 		"20260512_normalize_storage_times_to_project_tz",
 		"20260513_create_cpa_api_keys",
 		"20260513_use_int64_primary_keys",
+		"20260514_add_usage_event_cache_token_fields",
+		"20260514_add_usage_event_plain_dimension_indexes",
+		"20260514_create_usage_overview_stats",
+		"20260514_remove_usage_event_event_key_unique_index",
 	}
 	if len(versions) != len(expected) {
 		t.Fatalf("expected migration versions %v, got %v", expected, versions)

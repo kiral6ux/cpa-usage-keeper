@@ -8,5 +8,9 @@ func All() []any {
 		&ModelPriceSetting{},
 		&UsageIdentity{},
 		&CPAAPIKey{},
+		&UsageOverviewHourlyStat{},
+		&UsageOverviewDailyStat{},
+		&UsageOverviewHealthStat{},
+		&UsageOverviewAggregationCheckpoint{},
 	}
 }

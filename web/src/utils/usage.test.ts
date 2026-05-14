@@ -189,6 +189,24 @@ describe('resolveUsageFilterWindow', () => {
     });
   });
 
+  it('resolves yesterday as the previous local day boundary', () => {
+    const nowMs = Date.parse('2026-04-23T12:34:56.000Z');
+    const expectedStart = new Date(nowMs);
+    expectedStart.setHours(0, 0, 0, 0);
+    expectedStart.setDate(expectedStart.getDate() - 1);
+    const expectedEnd = new Date(expectedStart);
+    expectedEnd.setDate(expectedEnd.getDate() + 1);
+    expectedEnd.setMilliseconds(expectedEnd.getMilliseconds() - 1);
+
+    const window = resolveUsageFilterWindow(usage, 'yesterday', { nowMs });
+
+    expect(window).toEqual({
+      startMs: expectedStart.getTime(),
+      endMs: expectedEnd.getTime(),
+      windowMinutes: 24 * 60,
+    });
+  });
+
   it('resolves 30d as a rolling thirty-day window', () => {
     const nowMs = Date.parse('2026-04-23T12:34:56.000Z');
 

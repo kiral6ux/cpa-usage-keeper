@@ -15,7 +15,7 @@ func TestDecodeRedisUsageMessageMapsPayloadToUsageEvent(t *testing.T) {
 		"latency_ms":1234,
 		"source":"sk-test",
 		"auth_index":"auth-1",
-		"tokens":{"input_tokens":10,"output_tokens":20,"reasoning_tokens":3,"cached_tokens":4,"total_tokens":0},
+		"tokens":{"input_tokens":10,"output_tokens":20,"reasoning_tokens":3,"cached_tokens":4,"cache_read_tokens":5,"cache_creation_tokens":6,"total_tokens":0},
 		"failed":true,
 		"provider":"claude",
 		"model":"claude-sonnet-4-6",
@@ -38,7 +38,7 @@ func TestDecodeRedisUsageMessageMapsPayloadToUsageEvent(t *testing.T) {
 	if event.ModelAlias == nil || *event.ModelAlias != "claude-sonnet-alias" {
 		t.Fatalf("expected model alias to decode, got %+v", event.ModelAlias)
 	}
-	if event.InputTokens != 10 || event.OutputTokens != 20 || event.ReasoningTokens != 3 || event.CachedTokens != 4 || event.TotalTokens != 33 {
+	if event.InputTokens != 10 || event.OutputTokens != 20 || event.ReasoningTokens != 3 || event.CachedTokens != 4 || event.CacheReadTokens != 5 || event.CacheCreationTokens != 6 || event.TotalTokens != 33 {
 		t.Fatalf("unexpected tokens: %+v", event)
 	}
 	if !event.Timestamp.Equal(time.Date(2026, 4, 27, 7, 59, 0, 0, time.UTC)) {

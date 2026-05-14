@@ -40,7 +40,7 @@ export const useUsageStatsStore = create<UsageStatsState>((set, get) => ({
     const {
       force = false,
       staleTimeMs = USAGE_STATS_STALE_TIME_MS,
-      range = 'all',
+      range = '8h',
       start,
       end,
       apiKeyId,

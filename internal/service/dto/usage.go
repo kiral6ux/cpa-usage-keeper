@@ -41,21 +41,23 @@ type UsageEventFilterOptions struct {
 
 // UsageEventRecord 是单条 usage event 的服务层结果。
 type UsageEventRecord struct {
-	ID              int64
-	Timestamp       time.Time
-	APIGroupKey     string
-	Model           string
-	AuthType        string
-	Provider        string
-	Source          string
-	AuthIndex       string
-	Failed          bool
-	LatencyMS       int64
-	InputTokens     int64
-	OutputTokens    int64
-	ReasoningTokens int64
-	CachedTokens    int64
-	TotalTokens     int64
+	ID                  int64
+	Timestamp           time.Time
+	APIGroupKey         string
+	Model               string
+	AuthType            string
+	Provider            string
+	Source              string
+	AuthIndex           string
+	Failed              bool
+	LatencyMS           int64
+	InputTokens         int64
+	OutputTokens        int64
+	ReasoningTokens     int64
+	CachedTokens        int64
+	CacheReadTokens     int64
+	CacheCreationTokens int64
+	TotalTokens         int64
 }
 
 // UsageAnalysisModelStat 是按模型聚合的分析结果。

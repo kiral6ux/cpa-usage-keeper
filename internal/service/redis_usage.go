@@ -16,6 +16,7 @@ type RedisQueue interface {
 	PopUsage(ctx context.Context) ([]string, error)
 }
 
+// DecodeRedisUsageMessage 将 redis_inboxes.raw_message 原样解码为 usage_events 入库实体。
 func DecodeRedisUsageMessage(message string, fetchedAt time.Time) (entities.UsageEvent, json.RawMessage, error) {
 	raw := json.RawMessage(message)
 	var payload queuedUsageDetail
@@ -28,6 +29,7 @@ func DecodeRedisUsageMessage(message string, fetchedAt time.Time) (entities.Usag
 	return payload.toUsageEvent(fetchedAt), raw, nil
 }
 
+// queuedUsageDetail 对应 CPA Redis 队列中的单条 usage JSON payload。
 type queuedUsageDetail struct {
 	Timestamp time.Time      `json:"timestamp"`
 	LatencyMS int64          `json:"latency_ms"`
@@ -63,6 +65,7 @@ func trimRedisOptionalString(value *string) *string {
 	return &trimmed
 }
 
+// toUsageEvent 保持 Redis payload 的 model/request_id 语义，缺失时间才用本地拉取时间兜底。
 func (d queuedUsageDetail) toUsageEvent(fetchedAt time.Time) entities.UsageEvent {
 	tokens := normalizeTokens(d.Tokens)
 	apiGroupKey := firstNonEmpty(d.APIKey, d.Provider, d.Endpoint, "unknown")
@@ -75,23 +78,25 @@ func (d queuedUsageDetail) toUsageEvent(fetchedAt time.Time) entities.UsageEvent
 	authIndex := strings.TrimSpace(d.AuthIndex)
 	eventKey := strings.TrimSpace(d.RequestID)
 	return entities.UsageEvent{
-		EventKey:        eventKey,
-		APIGroupKey:     apiGroupKey,
-		Provider:        strings.TrimSpace(d.Provider),
-		Endpoint:        strings.TrimSpace(d.Endpoint),
-		AuthType:        normalizeRedisAuthType(d.AuthType),
-		RequestID:       strings.TrimSpace(d.RequestID),
-		Model:           model,
-		ModelAlias:      trimRedisOptionalString(d.Alias),
-		Timestamp:       timestamp,
-		Source:          source,
-		AuthIndex:       authIndex,
-		Failed:          d.Failed,
-		LatencyMS:       max(d.LatencyMS, 0),
-		InputTokens:     tokens.InputTokens,
-		OutputTokens:    tokens.OutputTokens,
-		ReasoningTokens: tokens.ReasoningTokens,
-		CachedTokens:    tokens.CachedTokens,
-		TotalTokens:     tokens.TotalTokens,
+		EventKey:            eventKey,
+		APIGroupKey:         apiGroupKey,
+		Provider:            strings.TrimSpace(d.Provider),
+		Endpoint:            strings.TrimSpace(d.Endpoint),
+		AuthType:            normalizeRedisAuthType(d.AuthType),
+		RequestID:           strings.TrimSpace(d.RequestID),
+		Model:               model,
+		ModelAlias:          trimRedisOptionalString(d.Alias),
+		Timestamp:           timestamp,
+		Source:              source,
+		AuthIndex:           authIndex,
+		Failed:              d.Failed,
+		LatencyMS:           max(d.LatencyMS, 0),
+		InputTokens:         tokens.InputTokens,
+		OutputTokens:        tokens.OutputTokens,
+		ReasoningTokens:     tokens.ReasoningTokens,
+		CachedTokens:        tokens.CachedTokens,
+		CacheReadTokens:     tokens.CacheReadTokens,
+		CacheCreationTokens: tokens.CacheCreationTokens,
+		TotalTokens:         tokens.TotalTokens,
 	}
 }

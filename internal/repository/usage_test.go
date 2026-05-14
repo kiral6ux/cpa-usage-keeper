@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
 	"time"
@@ -31,7 +32,7 @@ func TestBuildUsageSnapshotAggregatesEvents(t *testing.T) {
 
 	db := openUsageTestDatabase(t)
 	events := []entities.UsageEvent{
-		{EventKey: "event-1", APIGroupKey: "provider-a", Model: "claude-sonnet", Timestamp: time.Date(2026, 4, 16, 9, 0, 0, 0, time.UTC), Source: "codex-a", AuthIndex: "1", Failed: false, LatencyMS: 100, InputTokens: 10, OutputTokens: 20, ReasoningTokens: 5, CachedTokens: 0, TotalTokens: 35},
+		{EventKey: "event-1", APIGroupKey: "provider-a", Model: "claude-sonnet", Timestamp: time.Date(2026, 4, 16, 9, 0, 0, 0, time.UTC), Source: "codex-a", AuthIndex: "1", Failed: false, LatencyMS: 100, InputTokens: 10, OutputTokens: 20, ReasoningTokens: 5, CachedTokens: 0, CacheReadTokens: 7, CacheCreationTokens: 8, TotalTokens: 35},
 		{EventKey: "event-2", APIGroupKey: "provider-a", Model: "claude-sonnet", Timestamp: time.Date(2026, 4, 16, 10, 0, 0, 0, time.UTC), Source: "codex-b", AuthIndex: "2", Failed: true, LatencyMS: 200, InputTokens: 2, OutputTokens: 3, ReasoningTokens: 0, CachedTokens: 0, TotalTokens: 5},
 		{EventKey: "event-3", APIGroupKey: "provider-b", Model: "claude-opus", Timestamp: time.Date(2026, 4, 17, 10, 0, 0, 0, time.UTC), Source: "codex-c", AuthIndex: "3", Failed: false, LatencyMS: 300, InputTokens: 100, OutputTokens: 50, ReasoningTokens: 25, CachedTokens: 10, TotalTokens: 185},
 	}
@@ -62,6 +63,17 @@ func TestBuildUsageSnapshotAggregatesEvents(t *testing.T) {
 	}
 	if !model.Details[0].Timestamp.Before(model.Details[1].Timestamp) {
 		t.Fatalf("expected details to be sorted ascending, got %+v", model.Details)
+	}
+	if model.Details[0].Tokens.CacheReadTokens != 7 || model.Details[0].Tokens.CacheCreationTokens != 8 {
+		t.Fatalf("expected cache token details to be preserved, got %+v", model.Details[0].Tokens)
+	}
+
+	page, err := ListUsageEventsWithFilter(db, repodto.UsageQueryFilter{Page: 1, PageSize: 10, Limit: 10})
+	if err != nil {
+		t.Fatalf("ListUsageEventsWithFilter returned error: %v", err)
+	}
+	if page.Events[2].CacheReadTokens != 7 || page.Events[2].CacheCreationTokens != 8 {
+		t.Fatalf("expected cache token event list fields to be preserved, got %+v", page.Events[2])
 	}
 }
 
@@ -138,7 +150,12 @@ func TestBuildUsageOverviewWithFilterFiltersByAPIGroupKey(t *testing.T) {
 	db := openUsageTestDatabase(t)
 	insertAPIKeyFilterEvents(t, db)
 
-	overview, err := BuildUsageOverviewWithFilter(db, repodto.UsageQueryFilter{APIGroupKey: "sk-target-key"})
+	if err := AggregateUsageOverviewStats(context.Background(), db, time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatalf("AggregateUsageOverviewStats returned error: %v", err)
+	}
+	start := time.Date(2026, 4, 20, 9, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 4, 20, 11, 0, 0, 0, time.UTC)
+	overview, err := BuildUsageOverviewWithFilter(db, repodto.UsageQueryFilter{APIGroupKey: "sk-target-key", Range: "custom", StartTime: &start, EndTime: &end})
 	if err != nil {
 		t.Fatalf("BuildUsageOverviewWithFilter returned error: %v", err)
 	}
@@ -195,7 +212,7 @@ func TestListUsageEventsWithFilterFiltersByAPIGroupKey(t *testing.T) {
 func insertAPIKeyFilterEvents(t *testing.T, db *gorm.DB) {
 	t.Helper()
 	events := []entities.UsageEvent{
-		{EventKey: "target-1", APIGroupKey: " sk-target-key ", Model: "claude-sonnet", Timestamp: time.Date(2026, 4, 20, 9, 0, 0, 0, time.UTC), Source: "source-a", AuthIndex: "1", Failed: false, LatencyMS: 100, InputTokens: 10, OutputTokens: 20, TotalTokens: 30},
+		{EventKey: "target-1", APIGroupKey: "sk-target-key", Model: "claude-sonnet", Timestamp: time.Date(2026, 4, 20, 9, 0, 0, 0, time.UTC), Source: "source-a", AuthIndex: "1", Failed: false, LatencyMS: 100, InputTokens: 10, OutputTokens: 20, TotalTokens: 30},
 		{EventKey: "target-2", APIGroupKey: "sk-target-key", Model: "claude-opus", Timestamp: time.Date(2026, 4, 20, 10, 0, 0, 0, time.UTC), Source: "source-b", AuthIndex: "2", Failed: true, LatencyMS: 200, InputTokens: 15, OutputTokens: 25, TotalTokens: 40},
 		{EventKey: "other-1", APIGroupKey: "sk-other-key", Model: "claude-other", Timestamp: time.Date(2026, 4, 20, 11, 0, 0, 0, time.UTC), Source: "source-c", AuthIndex: "3", Failed: false, LatencyMS: 300, InputTokens: 100, OutputTokens: 200, TotalTokens: 300},
 	}

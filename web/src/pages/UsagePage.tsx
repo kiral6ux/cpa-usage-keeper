@@ -72,12 +72,13 @@ const DEFAULT_CHART_LINES = ['all'];
 const DEFAULT_TIME_RANGE: UsageTimeRange = '8h';
 const DEFAULT_CUSTOM_WINDOW_HOURS = 8;
 const MAX_CHART_LINES = 9;
-const TIME_RANGE_OPTIONS: ReadonlyArray<{ value: Exclude<UsageTimeRange, 'all'>; labelKey: string }> = [
+const TIME_RANGE_OPTIONS: ReadonlyArray<{ value: UsageTimeRange; labelKey: string }> = [
   { value: '4h', labelKey: 'usage_stats.range_4h' },
   { value: '8h', labelKey: 'usage_stats.range_8h' },
   { value: '12h', labelKey: 'usage_stats.range_12h' },
   { value: '24h', labelKey: 'usage_stats.range_24h' },
   { value: 'today', labelKey: 'usage_stats.range_today' },
+  { value: 'yesterday', labelKey: 'usage_stats.range_yesterday' },
   { value: '7d', labelKey: 'usage_stats.range_7d' },
   { value: '30d', labelKey: 'usage_stats.range_30d' },
   { value: 'custom', labelKey: 'usage_stats.range_custom' },
@@ -236,7 +237,7 @@ export const sanitizeRequestEventFilters = (
 };
 
 const isUsageTimeRange = (value: unknown): value is UsageTimeRange =>
-  value === '4h' || value === '8h' || value === '12h' || value === '24h' || value === 'today' || value === '7d' || value === '30d' || value === 'all' || value === 'custom';
+  value === '4h' || value === '8h' || value === '12h' || value === '24h' || value === 'today' || value === 'yesterday' || value === '7d' || value === '30d' || value === 'custom';
 
 const toDateInputValue = (timestamp: number): string => {
   const date = new Date(timestamp);
@@ -388,7 +389,7 @@ const loadTimeRange = (): UsageTimeRange => {
       return DEFAULT_TIME_RANGE;
     }
     const raw = localStorage.getItem(TIME_RANGE_STORAGE_KEY);
-    if (!isUsageTimeRange(raw) || raw === 'all') {
+    if (!isUsageTimeRange(raw)) {
       return DEFAULT_TIME_RANGE;
     }
     return raw;
@@ -412,9 +413,11 @@ export const getTimeRangeOptions = (translate: Translate) =>
     label: translate(option.labelKey),
   }));
 
+const isTodayTimeRange = (value: UsageTimeRange): value is 'today' => value === 'today';
+const isFullDayHourlyTimeRange = (value: UsageTimeRange): value is 'today' | 'yesterday' => value === 'today' || value === 'yesterday';
+
 export const getOverviewHourWindowHours = ({ timeRange, filterWindow }: { timeRange: UsageTimeRange; filterWindow: UsageFilterWindow }) => {
-  if (timeRange === 'all') return 24;
-  if (timeRange === 'today') return 24;
+  if (isFullDayHourlyTimeRange(timeRange)) return 24;
   if (timeRange !== 'custom') return Math.min(HOUR_WINDOW_BY_TIME_RANGE[timeRange], 24);
   if (filterWindow.windowMinutes === undefined) return 24;
   return Math.min(Math.max(Math.ceil(filterWindow.windowMinutes / 60), 1), 24);
@@ -431,7 +434,7 @@ const toTimestampMs = (value: string | undefined): number | undefined => {
 };
 
 export const getOverviewChartEndMs = ({ timeRange, filterWindow, fallbackEndMs, resolvedRangeEndMs }: { timeRange: UsageTimeRange; filterWindow: UsageFilterWindow; fallbackEndMs: number; resolvedRangeEndMs?: number }) => {
-  if (timeRange === 'today' && filterWindow.startMs !== undefined) {
+  if (isTodayTimeRange(timeRange) && filterWindow.startMs !== undefined) {
     return filterWindow.startMs + 24 * 60 * 60 * 1000;
   }
   if (resolvedRangeEndMs !== undefined) return resolvedRangeEndMs;
@@ -732,7 +735,7 @@ export function UsagePage({ onAuthRequired }: { onAuthRequired?: () => void }) {
     fallbackEndMs: lastRefreshedAt?.getTime() ?? Date.now(),
     resolvedRangeEndMs,
   });
-  const includeFinalHourBucket = timeRange === 'today';
+  const includeFinalHourBucket = isTodayTimeRange(timeRange);
   const preferredOverviewChartPeriod = getPreferredOverviewChartPeriod({
     windowMinutes: filterWindow.windowMinutes,
   });
@@ -1408,57 +1411,60 @@ export function UsagePage({ onAuthRequired }: { onAuthRequired?: () => void }) {
                         fullWidth
                       />
                     </label>
-                    {isCustomRange && (
-                      <div className={styles.customRangeFieldGroup}>
-                        <label className={styles.customRangeField}>
-                          <span className={styles.customRangeFieldLabel}>{t('usage_stats.custom_start')}</span>
-                          <input
-                            type="date"
-                            className={`input ${styles.customRangeInput}`}
-                            value={customTimeRange.start}
-                            min={customDateRangeBounds.min}
-                            max={customDateRangeBounds.max}
-                            onClick={handleCustomDateInputActivate}
-                            onFocus={handleCustomDateInputActivate}
-                            onKeyDown={handleCustomDateInputKeyDown}
-                            onPaste={(event) => event.preventDefault()}
-                            onChange={(event) => {
-                              const nextValue = event.target.value;
-                              if (!isCustomDateWithinBounds(nextValue, customDateRangeBounds)) return;
-                              setCustomTimeRange((current) => ({
-                                ...current,
-                                start: nextValue
-                              }));
-                            }}
-                            aria-label={t('usage_stats.custom_start')}
-                          />
-                        </label>
-                        <span className={styles.customRangeSeparator} aria-hidden="true">—</span>
-                        <label className={styles.customRangeField}>
-                          <span className={styles.customRangeFieldLabel}>{t('usage_stats.custom_end')}</span>
-                          <input
-                            type="date"
-                            className={`input ${styles.customRangeInput}`}
-                            value={customTimeRange.end}
-                            min={customDateRangeBounds.min}
-                            max={customDateRangeBounds.max}
-                            onClick={handleCustomDateInputActivate}
-                            onFocus={handleCustomDateInputActivate}
-                            onKeyDown={handleCustomDateInputKeyDown}
-                            onPaste={(event) => event.preventDefault()}
-                            onChange={(event) => {
-                              const nextValue = event.target.value;
-                              if (!isCustomDateWithinBounds(nextValue, customDateRangeBounds)) return;
-                              setCustomTimeRange((current) => ({
-                                ...current,
-                                end: nextValue
-                              }));
-                            }}
-                            aria-label={t('usage_stats.custom_end')}
-                          />
-                        </label>
-                      </div>
-                    )}
+                    <div
+                      className={`${styles.customRangeFieldGroup} ${isCustomRange ? styles.customRangeFieldGroupOpen : ''}`.trim()}
+                      aria-hidden={!isCustomRange}
+                    >
+                      <label className={styles.customRangeField}>
+                        <span className={styles.customRangeFieldLabel}>{t('usage_stats.custom_start')}</span>
+                        <input
+                          type="date"
+                          className={`input ${styles.customRangeInput}`}
+                          value={customTimeRange.start}
+                          min={customDateRangeBounds.min}
+                          max={customDateRangeBounds.max}
+                          disabled={!isCustomRange}
+                          onClick={handleCustomDateInputActivate}
+                          onFocus={handleCustomDateInputActivate}
+                          onKeyDown={handleCustomDateInputKeyDown}
+                          onPaste={(event) => event.preventDefault()}
+                          onChange={(event) => {
+                            const nextValue = event.target.value;
+                            if (!isCustomDateWithinBounds(nextValue, customDateRangeBounds)) return;
+                            setCustomTimeRange((current) => ({
+                              ...current,
+                              start: nextValue
+                            }));
+                          }}
+                          aria-label={t('usage_stats.custom_start')}
+                        />
+                      </label>
+                      <span className={styles.customRangeSeparator} aria-hidden="true">—</span>
+                      <label className={styles.customRangeField}>
+                        <span className={styles.customRangeFieldLabel}>{t('usage_stats.custom_end')}</span>
+                        <input
+                          type="date"
+                          className={`input ${styles.customRangeInput}`}
+                          value={customTimeRange.end}
+                          min={customDateRangeBounds.min}
+                          max={customDateRangeBounds.max}
+                          disabled={!isCustomRange}
+                          onClick={handleCustomDateInputActivate}
+                          onFocus={handleCustomDateInputActivate}
+                          onKeyDown={handleCustomDateInputKeyDown}
+                          onPaste={(event) => event.preventDefault()}
+                          onChange={(event) => {
+                            const nextValue = event.target.value;
+                            if (!isCustomDateWithinBounds(nextValue, customDateRangeBounds)) return;
+                            setCustomTimeRange((current) => ({
+                              ...current,
+                              end: nextValue
+                            }));
+                          }}
+                          aria-label={t('usage_stats.custom_end')}
+                        />
+                      </label>
+                    </div>
                   </div>
                 </div>
                 {showRangeControls && isCustomRange && customRangeHint && (

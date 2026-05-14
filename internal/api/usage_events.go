@@ -48,11 +48,13 @@ type usageEventPayload struct {
 }
 
 type usageEventTokenPayload struct {
-	InputTokens     int64 `json:"input_tokens"`
-	OutputTokens    int64 `json:"output_tokens"`
-	ReasoningTokens int64 `json:"reasoning_tokens"`
-	CachedTokens    int64 `json:"cached_tokens"`
-	TotalTokens     int64 `json:"total_tokens"`
+	InputTokens         int64 `json:"input_tokens"`
+	OutputTokens        int64 `json:"output_tokens"`
+	ReasoningTokens     int64 `json:"reasoning_tokens"`
+	CachedTokens        int64 `json:"cached_tokens"`
+	CacheReadTokens     int64 `json:"cache_read_tokens"`
+	CacheCreationTokens int64 `json:"cache_creation_tokens"`
+	TotalTokens         int64 `json:"total_tokens"`
 }
 
 func registerUsageEventsRoute(
@@ -154,11 +156,13 @@ func buildUsageEventsPayload(rows []servicedto.UsageEventRecord, resolver usageI
 			Failed:     row.Failed,
 			LatencyMS:  row.LatencyMS,
 			Tokens: usageEventTokenPayload{
-				InputTokens:     row.InputTokens,
-				OutputTokens:    row.OutputTokens,
-				ReasoningTokens: row.ReasoningTokens,
-				CachedTokens:    row.CachedTokens,
-				TotalTokens:     row.TotalTokens,
+				InputTokens:         row.InputTokens,
+				OutputTokens:        row.OutputTokens,
+				ReasoningTokens:     row.ReasoningTokens,
+				CachedTokens:        row.CachedTokens,
+				CacheReadTokens:     row.CacheReadTokens,
+				CacheCreationTokens: row.CacheCreationTokens,
+				TotalTokens:         row.TotalTokens,
 			},
 		})
 	}

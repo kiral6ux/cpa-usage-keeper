@@ -111,14 +111,14 @@ func TestRedisDrainLoopsLogTaskStarts(t *testing.T) {
 		cancelPull()
 		return false
 	}
-	drain.runPullLoop(pullCtx)
+	drain.runRedisInboxPullLoop(pullCtx)
 
 	processCtx, cancelProcess := context.WithCancel(context.Background())
 	drain.sleep = func(context.Context, time.Duration) bool {
 		cancelProcess()
 		return false
 	}
-	drain.runProcessLoop(processCtx)
+	drain.runRedisInboxProcessLoop(processCtx)
 
 	content := logs.String()
 	for _, expected := range []string{"msg=\"redis inbox pull task started\"", "msg=\"redis inbox process task started\""} {
@@ -137,7 +137,7 @@ func TestRedisDrainPullLoopDoesNotProcessInbox(t *testing.T) {
 		return false
 	}
 
-	drain.runPullLoop(ctx)
+	drain.runRedisInboxPullLoop(ctx)
 
 	pulls, processes := syncer.counts()
 	if pulls != 1 || processes != 0 {
@@ -145,31 +145,100 @@ func TestRedisDrainPullLoopDoesNotProcessInbox(t *testing.T) {
 	}
 }
 
-func TestRedisDrainProcessLoopUsesFixedInterval(t *testing.T) {
+func TestRedisDrainProcessLoopRunsThenSleepsForOneSecond(t *testing.T) {
 	syncer := &redisDrainSyncStub{}
 	drain := NewRedisDrain(syncer, RedisDrainConfig{IdleInterval: time.Hour, ErrorBackoff: time.Hour})
 	ctx, cancel := context.WithCancel(context.Background())
-	calls := 0
 	drain.sleep = func(_ context.Context, d time.Duration) bool {
-		calls++
-		if calls == 1 {
-			if d != redisInboxProcessInterval {
-				t.Fatalf("expected process interval %s, got %s", redisInboxProcessInterval, d)
-			}
-			return true
+		if d != redisInboxProcessInterval {
+			t.Fatalf("expected process interval %s, got %s", redisInboxProcessInterval, d)
+		}
+		pulls, processes := syncer.counts()
+		if pulls != 0 || processes != 1 {
+			t.Fatalf("expected process loop to run before sleeping, got pulls=%d processes=%d", pulls, processes)
 		}
 		cancel()
 		return false
 	}
 
-	drain.runProcessLoop(ctx)
+	drain.runRedisInboxProcessLoop(ctx)
 
 	_, processes := syncer.counts()
 	if processes != 1 {
 		t.Fatalf("expected process loop to process once, got %d", processes)
 	}
-	if calls == 0 {
-		t.Fatal("expected process loop to sleep before processing")
+}
+
+func TestRedisPullAndProcessRunnersRunIndependently(t *testing.T) {
+	syncer := &redisDrainSyncStub{pullResults: []*servicedto.RedisInboxPullResult{{Empty: true, Status: "empty"}}}
+	drain := NewRedisDrain(syncer, RedisDrainConfig{IdleInterval: time.Hour, ErrorBackoff: time.Hour})
+	pullRunner := NewRedisPullRunner(drain)
+	processRunner := NewRedisProcessRunner(drain)
+
+	pullCtx, cancelPull := context.WithCancel(context.Background())
+	drain.sleep = func(context.Context, time.Duration) bool {
+		cancelPull()
+		return false
+	}
+	if err := pullRunner.Run(pullCtx); err != nil {
+		t.Fatalf("pull runner returned error: %v", err)
+	}
+	pulls, processes := syncer.counts()
+	if pulls != 1 || processes != 0 {
+		t.Fatalf("expected pull runner to only pull, got pulls=%d processes=%d", pulls, processes)
+	}
+
+	processCtx, cancelProcess := context.WithCancel(context.Background())
+	drain.sleep = func(context.Context, time.Duration) bool {
+		cancelProcess()
+		return false
+	}
+	if err := processRunner.Run(processCtx); err != nil {
+		t.Fatalf("process runner returned error: %v", err)
+	}
+	pulls, processes = syncer.counts()
+	if pulls != 1 || processes != 1 {
+		t.Fatalf("expected process runner to only process, got pulls=%d processes=%d", pulls, processes)
+	}
+}
+
+func TestRedisDrainProcessSuccessDoesNotClearPullError(t *testing.T) {
+	drain := NewRedisDrain(&redisDrainSyncStub{}, RedisDrainConfig{IdleInterval: time.Second, ErrorBackoff: time.Second})
+
+	drain.recordRedisPullResult(nil, errors.New("redis unavailable"))
+	drain.recordRedisProcessResult(&servicedto.RedisBatchSyncResult{Status: "empty"}, nil)
+
+	status := drain.Status()
+	if status.LastError != "redis unavailable" {
+		t.Fatalf("expected process success not to clear pull error, got %+v", status)
+	}
+}
+
+func TestRedisDrainPullSuccessDoesNotClearProcessError(t *testing.T) {
+	drain := NewRedisDrain(&redisDrainSyncStub{}, RedisDrainConfig{IdleInterval: time.Second, ErrorBackoff: time.Second})
+
+	drain.recordRedisProcessResult(&servicedto.RedisBatchSyncResult{Status: "failed"}, errors.New("aggregate failed"))
+	drain.recordRedisPullResult(&servicedto.RedisInboxPullResult{Status: "empty"}, nil)
+
+	status := drain.Status()
+	if status.LastError != "aggregate failed" {
+		t.Fatalf("expected pull success not to clear process error, got %+v", status)
+	}
+}
+
+func TestRedisDrainRunningStatusTracksMultipleIndependentRunners(t *testing.T) {
+	drain := NewRedisDrain(&redisDrainSyncStub{}, RedisDrainConfig{IdleInterval: time.Second, ErrorBackoff: time.Second})
+
+	drain.setRunning(true)
+	drain.setRunning(true)
+	drain.setRunning(false)
+
+	if !drain.Status().Running {
+		t.Fatal("expected Redis status to stay running while one split runner is still active")
+	}
+	drain.setRunning(false)
+	if drain.Status().Running {
+		t.Fatal("expected Redis status to stop after all split runners exit")
 	}
 }
 
@@ -193,12 +262,12 @@ func TestRedisDrainPullAndProcessCanRunIndependently(t *testing.T) {
 	ctx := context.Background()
 	pullDone := make(chan error, 1)
 	go func() {
-		_, err := drain.runRedisPull(ctx)
+		_, err := drain.pullRedisInboxOnce(ctx)
 		pullDone <- err
 	}()
 	<-syncer.pullStarted
 
-	if _, err := drain.runRedisProcess(ctx); err != nil {
+	if _, err := drain.processRedisInboxOnce(ctx); err != nil {
 		close(syncer.releasePull)
 		t.Fatalf("expected process to run while pull is active, got %v", err)
 	}
@@ -224,7 +293,7 @@ func TestRedisDrainBacksOffAfterPullError(t *testing.T) {
 		return false
 	}
 
-	drain.runPullLoop(ctx)
+	drain.runRedisInboxPullLoop(ctx)
 
 	if slept != 25*time.Millisecond {
 		t.Fatalf("expected error backoff sleep, got %s", slept)

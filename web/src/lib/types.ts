@@ -133,6 +133,8 @@ export interface UsageEventTokens {
   output_tokens: number
   reasoning_tokens: number
   cached_tokens: number
+  cache_read_tokens: number
+  cache_creation_tokens: number
   total_tokens: number
 }
 
@@ -346,7 +348,7 @@ export interface PricingResponse {
   pricing: PricingEntry[]
 }
 
-export type UsageTimeRange = 'all' | '4h' | '8h' | '12h' | '24h' | 'today' | '7d' | '30d' | 'custom'
+export type UsageTimeRange = '4h' | '8h' | '12h' | '24h' | 'today' | 'yesterday' | '7d' | '30d' | 'custom'
 
 export interface UsageFilterWindow {
   startMs?: number

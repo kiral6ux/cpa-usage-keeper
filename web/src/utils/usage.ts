@@ -367,19 +367,7 @@ export function resolveUsageFilterWindow(
     customEnd?: string | number;
   } = {}
 ): UsageFilterWindow {
-  const details = collectUsageDetails(usage);
-  const bounds = getDetailTimestampBounds(details);
   const fallbackNow = toValidTimestamp(options.nowMs) ?? Date.now();
-
-  if (range === 'all') {
-    if (!bounds) return {};
-    const spanMinutes = Math.max((bounds.latestMs - bounds.earliestMs) / 60000, 1);
-    return {
-      startMs: bounds.earliestMs,
-      endMs: bounds.latestMs,
-      windowMinutes: spanMinutes
-    };
-  }
 
   if (range === 'custom') {
     const startMs = toValidTimestamp(options.customStart);
@@ -394,15 +382,18 @@ export function resolveUsageFilterWindow(
     };
   }
 
-  if (range === 'today') {
+  if (range === 'today' || range === 'yesterday') {
     const start = new Date(fallbackNow);
     start.setHours(0, 0, 0, 0);
+    if (range === 'yesterday') {
+      start.setDate(start.getDate() - 1);
+    }
     const startMs = start.getTime();
-    const endMs = fallbackNow;
+    const endMs = range === 'today' ? fallbackNow : startMs + (24 * 60 * 60 * 1000) - 1;
     return {
       startMs,
       endMs,
-      windowMinutes: Math.max((endMs - startMs) / 60000, 1)
+      windowMinutes: range === 'today' ? Math.max((endMs - startMs) / 60000, 1) : 24 * 60
     };
   }
 

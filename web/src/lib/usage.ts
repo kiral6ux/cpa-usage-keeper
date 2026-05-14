@@ -90,7 +90,7 @@ export function collectUsageEvents(usage: UsageSnapshot): UsageEventWithNames[] 
 }
 
 export function filterUsageSnapshot(usage: UsageSnapshot, range: UsageTimeRange): UsageSnapshot {
-  if (range === 'all' || range === 'custom') {
+  if (range === 'custom') {
     return usage
   }
 
@@ -112,10 +112,20 @@ export function filterUsageSnapshot(usage: UsageSnapshot, range: UsageTimeRange)
     '7d': 7 * 24 * 60 * 60 * 1000,
   }
   const nowMs = Date.now()
+  const localDayStart = new Date(nowMs)
+  localDayStart.setHours(0, 0, 0, 0)
+  const yesterdayStart = new Date(localDayStart)
+  yesterdayStart.setDate(yesterdayStart.getDate() - 1)
   const threshold = range === 'today'
-    ? new Date(nowMs).setHours(0, 0, 0, 0)
-    : latestTimestamp - (presetWindowMs[range] ?? 0)
-  const upperThreshold = range === 'today' ? nowMs : Number.POSITIVE_INFINITY
+    ? localDayStart.getTime()
+    : range === 'yesterday'
+      ? yesterdayStart.getTime()
+      : latestTimestamp - (presetWindowMs[range] ?? 0)
+  const upperThreshold = range === 'today'
+    ? nowMs
+    : range === 'yesterday'
+      ? localDayStart.getTime() - 1
+      : Number.POSITIVE_INFINITY
 
   const filtered: UsageSnapshot = {
     total_requests: 0,

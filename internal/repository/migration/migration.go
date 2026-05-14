@@ -31,6 +31,10 @@ const (
 	migrationNormalizeStorageTimesToProjectTZ       = "20260512_normalize_storage_times_to_project_tz"
 	migrationUseInt64PrimaryKeys                    = "20260513_use_int64_primary_keys"
 	migrationCreateCPAAPIKeys                       = "20260513_create_cpa_api_keys"
+	migrationAddUsageEventCacheTokenFields          = "20260514_add_usage_event_cache_token_fields"
+	migrationAddUsageEventPlainDimensionIndexes     = "20260514_add_usage_event_plain_dimension_indexes"
+	migrationCreateUsageOverviewStats               = "20260514_create_usage_overview_stats"
+	migrationRemoveUsageEventEventKeyUniqueIndex    = "20260514_remove_usage_event_event_key_unique_index"
 )
 
 type schemaMigration struct {
@@ -105,6 +109,10 @@ func orderedMigrations() []databaseMigration {
 		{version: migrationNormalizeStorageTimesToProjectTZ, run: normalizeStorageTimesToProjectTZMigration},
 		{version: migrationUseInt64PrimaryKeys, run: useInt64PrimaryKeysMigration},
 		{version: migrationCreateCPAAPIKeys, run: createCPAAPIKeysMigration},
+		{version: migrationAddUsageEventCacheTokenFields, run: addUsageEventCacheTokenFieldsMigration},
+		{version: migrationAddUsageEventPlainDimensionIndexes, run: addUsageEventPlainDimensionIndexesMigration},
+		{version: migrationCreateUsageOverviewStats, run: createUsageOverviewStatsMigration},
+		{version: migrationRemoveUsageEventEventKeyUniqueIndex, run: removeUsageEventEventKeyUniqueIndexMigration},
 	}
 }
 

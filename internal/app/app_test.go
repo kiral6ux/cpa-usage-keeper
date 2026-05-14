@@ -3,11 +3,16 @@ package app
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"cpa-usage-keeper/internal/config"
+	"cpa-usage-keeper/internal/entities"
 	"cpa-usage-keeper/internal/poller"
+	"cpa-usage-keeper/internal/repository"
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 )
@@ -38,7 +43,13 @@ func TestNewWithConfigBuildsRedisDrainAndRouter(t *testing.T) {
 	}
 	defer app.Close()
 	if app.Poller == nil {
-		t.Fatal("expected poller to be initialized")
+		t.Fatal("expected poller status provider to be initialized")
+	}
+	if app.RedisPull == nil {
+		t.Fatal("expected redis pull runner to be initialized")
+	}
+	if app.RedisProcess == nil {
+		t.Fatal("expected redis process runner to be initialized")
 	}
 	if app.Router == nil {
 		t.Fatal("expected router to be initialized")
@@ -51,6 +62,53 @@ func TestNewWithConfigBuildsRedisDrainAndRouter(t *testing.T) {
 	}
 	if app.MetadataSync == nil {
 		t.Fatal("expected metadata sync runner to be initialized")
+	}
+}
+
+func TestNewWithConfigAggregatesExistingOverviewStatsBeforeRunnersStart(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "app-startup-overview-catchup.db")
+	seedDB, err := repository.OpenDatabase(config.Config{SQLitePath: dbPath})
+	if err != nil {
+		t.Fatalf("OpenDatabase returned error: %v", err)
+	}
+	if _, _, err := repository.InsertUsageEvents(seedDB, []entities.UsageEvent{
+		{EventKey: "legacy-event", APIGroupKey: "provider-a", Model: "claude-sonnet", Timestamp: time.Date(2026, 4, 16, 10, 10, 0, 0, time.UTC), TotalTokens: 150},
+	}); err != nil {
+		t.Fatalf("InsertUsageEvents returned error: %v", err)
+	}
+	seedSQL, err := seedDB.DB()
+	if err != nil {
+		t.Fatalf("load seed sql db: %v", err)
+	}
+	if err := seedSQL.Close(); err != nil {
+		t.Fatalf("close seed db: %v", err)
+	}
+
+	logDir := t.TempDir()
+
+	cfg := testAppConfig(t)
+	cfg.SQLitePath = dbPath
+	cfg.LogFileEnabled = true
+	cfg.LogDir = logDir
+	app, err := NewWithConfig(cfg)
+	if err != nil {
+		t.Fatalf("NewWithConfig returned error: %v", err)
+	}
+	defer app.Close()
+
+	var checkpoint entities.UsageOverviewAggregationCheckpoint
+	if err := app.DB.Where("name = ?", "overview").First(&checkpoint).Error; err != nil {
+		t.Fatalf("load overview checkpoint returned error: %v", err)
+	}
+	if checkpoint.LastAggregatedUsageEventID == 0 {
+		t.Fatalf("expected startup catch-up to aggregate legacy usage events, got checkpoint %+v", checkpoint)
+	}
+	logContent := readAppLogFile(t, logDir)
+	if !strings.Contains(logContent, "starting usage overview aggregation catch-up") {
+		t.Fatalf("expected startup catch-up start log, got %s", logContent)
+	}
+	if !strings.Contains(logContent, "completed usage overview aggregation catch-up") {
+		t.Fatalf("expected startup catch-up completion log, got %s", logContent)
 	}
 }
 
@@ -74,7 +132,13 @@ func TestNewWithConfigSelectsRedisDrain(t *testing.T) {
 	}
 	defer app.Close()
 	if _, ok := app.Poller.(*poller.RedisDrain); !ok {
-		t.Fatalf("expected redis to use redis drain, got %T", app.Poller)
+		t.Fatalf("expected redis status provider to use redis drain, got %T", app.Poller)
+	}
+	if _, ok := app.RedisPull.(*poller.RedisPullRunner); !ok {
+		t.Fatalf("expected redis pull runner, got %T", app.RedisPull)
+	}
+	if _, ok := app.RedisProcess.(*poller.RedisProcessRunner); !ok {
+		t.Fatalf("expected redis process runner, got %T", app.RedisProcess)
 	}
 	if app.Maintenance == nil {
 		t.Fatal("expected maintenance cleanup runner to be initialized")
@@ -88,7 +152,13 @@ func TestNewWithConfigCreatesIndependentMaintenanceRunner(t *testing.T) {
 	}
 	defer app.Close()
 	if app.Poller == nil {
-		t.Fatal("expected sync poller to be initialized")
+		t.Fatal("expected sync status provider to be initialized")
+	}
+	if app.RedisPull == nil {
+		t.Fatal("expected independent redis pull runner to be initialized")
+	}
+	if app.RedisProcess == nil {
+		t.Fatal("expected independent redis process runner to be initialized")
 	}
 	if app.Maintenance == nil {
 		t.Fatal("expected independent maintenance runner to be initialized")
@@ -98,7 +168,8 @@ func TestNewWithConfigCreatesIndependentMaintenanceRunner(t *testing.T) {
 func TestRunStartsPollerAndMaintenanceIndependently(t *testing.T) {
 	cfg := testAppConfig(t)
 	cfg.AppPort = "invalid-port"
-	pollerStarted := make(chan struct{})
+	pullStarted := make(chan struct{})
+	processStarted := make(chan struct{})
 	maintenanceStarted := make(chan struct{})
 	metadataStarted := make(chan struct{})
 	backupStarted := make(chan struct{})
@@ -117,10 +188,13 @@ func TestRunStartsPollerAndMaintenanceIndependently(t *testing.T) {
 		close(backupStarted)
 		return false
 	}
+	statusProvider := &appRunStub{started: make(chan struct{})}
 	app := &App{
 		Config:            &cfg,
 		Router:            gin.New(),
-		Poller:            &appRunStub{started: pollerStarted},
+		Poller:            statusProvider,
+		RedisPull:         &appRunStub{started: pullStarted},
+		RedisProcess:      &appRunStub{started: processStarted},
 		Maintenance:       maintenance,
 		MetadataSync:      metadataRunner,
 		BackupMaintenance: backupRunner,
@@ -130,9 +204,19 @@ func TestRunStartsPollerAndMaintenanceIndependently(t *testing.T) {
 		t.Fatal("expected Run to return an error for invalid port")
 	}
 	select {
-	case <-pollerStarted:
+	case <-pullStarted:
 	case <-time.After(time.Second):
-		t.Fatal("expected poller runner to start")
+		t.Fatal("expected redis pull runner to start")
+	}
+	select {
+	case <-processStarted:
+	case <-time.After(time.Second):
+		t.Fatal("expected redis process runner to start")
+	}
+	select {
+	case <-statusProvider.started:
+		t.Fatal("expected poller status provider not to be started as a background runner")
+	default:
 	}
 	select {
 	case <-maintenanceStarted:
@@ -216,6 +300,16 @@ func captureAppInfoLogs(t *testing.T) *bytes.Buffer {
 		logrus.SetLevel(previousLevel)
 	})
 	return &logs
+}
+
+func readAppLogFile(t *testing.T, logDir string) string {
+	t.Helper()
+	path := filepath.Join(logDir, "cpa-usage-keeper-"+time.Now().Format("2006-01-02")+".log")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read app log file: %v", err)
+	}
+	return string(content)
 }
 
 func testAppConfig(t *testing.T) config.Config {

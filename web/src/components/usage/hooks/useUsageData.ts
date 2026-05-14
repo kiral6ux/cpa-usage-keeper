@@ -27,9 +27,9 @@ export interface UseUsageDataOptions {
 }
 
 export const normalizeUsageOverviewRange = (value: string): UsageTimeRange => (
-  value === '4h' || value === '8h' || value === '12h' || value === '24h' || value === 'today' || value === '7d' || value === '30d' || value === 'all' || value === 'custom'
+  value === '4h' || value === '8h' || value === '12h' || value === '24h' || value === 'today' || value === 'yesterday' || value === '7d' || value === '30d' || value === 'custom'
     ? value
-    : 'all'
+    : '8h'
 );
 
 const toCustomDateParam = (value: string | undefined): string | undefined => {
@@ -38,7 +38,7 @@ const toCustomDateParam = (value: string | undefined): string | undefined => {
 };
 
 export function useUsageData(options: UseUsageDataOptions = {}): UseUsageDataReturn {
-  const { onAuthRequired, range = 'all', customStart, customEnd, enabled = true, apiKeyId } = options;
+  const { onAuthRequired, range = '8h', customStart, customEnd, enabled = true, apiKeyId } = options;
   const usageSnapshot = useUsageStatsStore((state) => state.usage);
   const loading = useUsageStatsStore((state) => state.loading);
   const storeError = useUsageStatsStore((state) => state.error);

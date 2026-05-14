@@ -13,9 +13,11 @@ describe('UsagePage toolbar styles', () => {
     expect(usagePageStyles).toMatch(/\.timeRangeSelectControl\s*\{[\s\S]*?flex:\s*0 0 164px;/)
   })
 
-  it('only renders custom range inputs when the custom range is selected', () => {
-    expect(usagePageSource).toContain('{isCustomRange && (')
-    expect(usagePageSource).not.toContain('aria-hidden={!isCustomRange}')
+  it('keeps custom range inputs hidden and disabled until the custom range is selected', () => {
+    expect(usagePageSource).toContain('styles.customRangeFieldGroupOpen')
+    expect(usagePageSource).toContain('aria-hidden={!isCustomRange}')
+    expect(usagePageSource).toContain('disabled={!isCustomRange}')
+    expect(usagePageSource).not.toContain('{isCustomRange && (')
   })
 
   it('keeps custom date inputs selectable through the native picker without pointer interception', () => {

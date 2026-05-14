@@ -295,12 +295,13 @@ for (const [tab, expected] of [
 }
 
 describe('UsagePage time range options', () => {
-  it('includes rolling 24h, local Today, and 30d ranges', () => {
+  it('includes rolling 24h, local Today, Yesterday, and 30d ranges', () => {
     const options = getTimeRangeOptions((key) => `translated:${key}`);
 
-    expect(options.map((option) => option.value)).toEqual(['4h', '8h', '12h', '24h', 'today', '7d', '30d', 'custom']);
+    expect(options.map((option) => option.value)).toEqual(['4h', '8h', '12h', '24h', 'today', 'yesterday', '7d', '30d', 'custom']);
     expect(options.map((option) => option.label)).toContain('translated:usage_stats.range_24h');
     expect(options.map((option) => option.label)).toContain('translated:usage_stats.range_today');
+    expect(options.map((option) => option.label)).toContain('translated:usage_stats.range_yesterday');
     expect(options.map((option) => option.label)).toContain('translated:usage_stats.range_30d');
   });
 });
@@ -375,7 +376,7 @@ describe('UsagePage custom date query', () => {
 });
 
 describe('UsagePage Overview chart window', () => {
-  it('uses the backend-resolved range end for Today hourly chart buckets', () => {
+  it('uses Today hourly chart buckets through the next day boundary', () => {
     const filterWindow: UsageFilterWindow = {
       startMs: Date.parse('2026-04-23T00:00:00.000Z'),
       endMs: Date.parse('2026-04-23T12:34:56.000Z'),
@@ -389,6 +390,23 @@ describe('UsagePage Overview chart window', () => {
       fallbackEndMs: filterWindow.endMs ?? 0,
       resolvedRangeEndMs: Date.parse('2026-04-23T15:59:59.999Z'),
     })).toBe(Date.parse('2026-04-24T00:00:00.000Z'));
+  });
+
+  it('uses Yesterday hourly chart buckets through the resolved range end', () => {
+    const filterWindow: UsageFilterWindow = {
+      startMs: Date.parse('2026-04-23T00:00:00.000Z'),
+      endMs: Date.parse('2026-04-23T23:59:59.999Z'),
+      windowMinutes: 24 * 60,
+    };
+    const resolvedRangeEndMs = Date.parse('2026-04-23T23:59:59.999Z');
+
+    expect(getOverviewHourWindowHours({ timeRange: 'yesterday', filterWindow })).toBe(24);
+    expect(getOverviewChartEndMs({
+      timeRange: 'yesterday',
+      filterWindow,
+      fallbackEndMs: Date.parse('2026-04-24T12:34:56.000Z'),
+      resolvedRangeEndMs,
+    })).toBe(resolvedRangeEndMs);
   });
 });
 
