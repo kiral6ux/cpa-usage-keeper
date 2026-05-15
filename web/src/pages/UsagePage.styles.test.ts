@@ -6,11 +6,35 @@ const usagePageSource = readFileSync(new URL('./UsagePage.tsx', import.meta.url)
 const requestEventsSource = readFileSync(new URL('../components/usage/RequestEventsDetailsCard.tsx', import.meta.url), 'utf8')
 const priceSettingsSource = readFileSync(new URL('../components/usage/PriceSettingsCard.tsx', import.meta.url), 'utf8')
 const chartLineSelectorSource = readFileSync(new URL('../components/usage/ChartLineSelector.tsx', import.meta.url), 'utf8')
+const selectSource = readFileSync(new URL('../components/ui/Select.tsx', import.meta.url), 'utf8')
 
 describe('UsagePage toolbar styles', () => {
   it('keeps visible range controls content-sized in narrow layouts', () => {
     expect(usagePageStyles).toMatch(/\.timeRangeGroup\s*\{[\s\S]*?width:\s*fit-content;/)
     expect(usagePageStyles).toMatch(/\.timeRangeSelectControl\s*\{[\s\S]*?flex:\s*0 0 164px;/)
+  })
+
+  it('keeps refresh controls outside the query filter layout', () => {
+    expect(usagePageSource).toContain('{showRangeControls && (\n                  <div className={styles.usageFilterBar}>')
+    expect(usagePageSource).toContain('className={styles.usageRefreshSlot}')
+    expect(usagePageSource).not.toContain('styles.usageFilterBarCollapsed')
+    expect(usagePageStyles).toMatch(/\.usageRefreshSlot\s*\{[\s\S]*?flex:\s*0 0 auto;/)
+  })
+
+  it('widens only the API key dropdown menu without changing the trigger width', () => {
+    expect(selectSource).toContain('dropdownMinWidth?: number')
+    expect(selectSource).toContain('rect.left - (width - rect.width) / 2')
+    expect(usagePageSource).toContain('dropdownMinWidth={180}')
+  })
+
+  it('preserves the original desktop toolbar sizing while isolating refresh layout', () => {
+    expect(usagePageStyles).toMatch(/\.toolbarActionsRight\s*\{[\s\S]*?align-items:\s*center;/)
+    expect(usagePageStyles).toMatch(/\.usageFilterBar\s*\{[\s\S]*?align-items:\s*center;/)
+    expect(usagePageStyles).toMatch(/\.usageFilterBar\s*\{[\s\S]*?flex:\s*1 1 auto;/)
+    expect(usagePageStyles).toMatch(/\.apiKeySelectControl\s*\{[\s\S]*?width:\s*172px;/)
+    expect(usagePageStyles).toMatch(/\.apiKeySelectControl\s*\{[\s\S]*?flex:\s*0 0 172px;/)
+    expect(usagePageStyles).toMatch(/\.rangeSelectControl\s*\{[\s\S]*?width:\s*164px;/)
+    expect(usagePageStyles).toMatch(/\.rangeSelectControl\s*\{[\s\S]*?flex:\s*0 0 164px;/)
   })
 
   it('keeps custom range inputs hidden and disabled until the custom range is selected', () => {

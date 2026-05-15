@@ -17,6 +17,7 @@ interface CredentialRowShellProps {
   badges: ReactNode
   metrics: ReactNode
   side: ReactNode
+  rowClassName?: string
 }
 
 export function CredentialSectionShell({ eyebrow, title, subtitle, countLabel, actions, children }: CredentialSectionShellProps) {
@@ -38,10 +39,10 @@ export function CredentialSectionShell({ eyebrow, title, subtitle, countLabel, a
   )
 }
 
-export function CredentialRowShell({ title, subtitle, badges, metrics, side }: CredentialRowShellProps) {
+export function CredentialRowShell({ title, subtitle, badges, metrics, side, rowClassName }: CredentialRowShellProps) {
   // 统一三段式行结构：左侧身份信息、中间指标、右侧 quota/状态区域。
   return (
-    <article className={styles.credentialRow}>
+    <article className={`${styles.credentialRow} ${rowClassName ?? ''}`.trim()}>
       <div className={styles.credentialIdentityBlock}>
         <div className={styles.credentialNameRow}>
           <span className={styles.credentialDisplayName}>{title}</span>

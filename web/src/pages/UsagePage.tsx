@@ -1385,8 +1385,9 @@ export function UsagePage({ onAuthRequired }: { onAuthRequired?: () => void }) {
               </div>
 
               <div className={styles.toolbarActionsRight}>
-                <div className={`${styles.usageFilterBar} ${showRangeControls ? '' : styles.usageFilterBarCollapsed}`.trim()} aria-hidden={!showRangeControls}>
-                  <div className={styles.apiKeyFilterGroup}>
+                {showRangeControls && (
+                  <div className={styles.usageFilterBar}>
+                    <div className={styles.apiKeyFilterGroup}>
                     <label className={`${styles.usageFilterField} ${styles.apiKeyFilterField}`.trim()}>
                       <span className={styles.usageFilterLabel}>{t('usage_stats.api_key_filter')}</span>
                       <Select
@@ -1396,10 +1397,11 @@ export function UsagePage({ onAuthRequired }: { onAuthRequired?: () => void }) {
                         className={styles.apiKeySelectControl}
                         ariaLabel={t('usage_stats.api_key_filter')}
                         fullWidth
+                        dropdownMinWidth={180}
                       />
                     </label>
                   </div>
-                  <div className={`${styles.timeRangeGroup} ${showRangeControls ? '' : styles.timeRangeGroupCollapsed}`.trim()}>
+                    <div className={styles.timeRangeGroup}>
                     <label className={`${styles.usageFilterField} ${styles.rangeFilterField}`.trim()}>
                       <span className={styles.usageFilterLabel}>{t('usage_stats.range_filter')}</span>
                       <Select
@@ -1466,34 +1468,37 @@ export function UsagePage({ onAuthRequired }: { onAuthRequired?: () => void }) {
                       </label>
                     </div>
                   </div>
-                </div>
-                {showRangeControls && isCustomRange && customRangeHint && (
-                  <span className={styles.customRangeHint}>{customRangeHint}</span>
+                    {isCustomRange && customRangeHint && (
+                      <span className={styles.customRangeHint}>{customRangeHint}</span>
+                    )}
+                    {isCustomRange && customRangeError && (
+                      <span className={styles.customRangeError}>{customRangeError}</span>
+                    )}
+                  </div>
                 )}
-                {showRangeControls && isCustomRange && customRangeError && (
-                  <span className={styles.customRangeError}>{customRangeError}</span>
-                )}
-                <div className={styles.usageFilterActions}>
-                  <div className={styles.refreshSwitcher} role="group" aria-label={t('usage_stats.refresh')}>
-                    <button
-                      type="button"
-                      className={`${styles.refreshPill} ${styles.refreshPillActive} ${manualRefreshLoading ? styles.refreshPillLoading : ''}`.trim()}
-                      onClick={() => void handleManualRefresh().catch(() => {})}
-                      disabled={manualRefreshLoading}
-                      aria-busy={manualRefreshLoading}
-                    >
-                      {manualRefreshLoading ? (
-                        <span className={styles.refreshPillInner}>
-                          <LoadingSpinner size={12} className={styles.refreshSpinner} />
-                          <span>{t('common.loading')}</span>
-                        </span>
-                      ) : (
-                        <span className={styles.refreshPillInner}>
-                          <IconRefreshCw size={14} />
-                          <span>{t('usage_stats.refresh')}</span>
-                        </span>
-                      )}
-                    </button>
+                <div className={styles.usageRefreshSlot}>
+                  <div className={styles.usageFilterActions}>
+                    <div className={styles.refreshSwitcher} role="group" aria-label={t('usage_stats.refresh')}>
+                      <button
+                        type="button"
+                        className={`${styles.refreshPill} ${styles.refreshPillActive} ${manualRefreshLoading ? styles.refreshPillLoading : ''}`.trim()}
+                        onClick={() => void handleManualRefresh().catch(() => {})}
+                        disabled={manualRefreshLoading}
+                        aria-busy={manualRefreshLoading}
+                      >
+                        {manualRefreshLoading ? (
+                          <span className={styles.refreshPillInner}>
+                            <LoadingSpinner size={12} className={styles.refreshSpinner} />
+                            <span>{t('common.loading')}</span>
+                          </span>
+                        ) : (
+                          <span className={styles.refreshPillInner}>
+                            <IconRefreshCw size={14} />
+                            <span>{t('usage_stats.refresh')}</span>
+                          </span>
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>

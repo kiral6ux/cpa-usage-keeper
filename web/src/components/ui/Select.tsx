@@ -31,6 +31,7 @@ interface SelectProps {
   ariaLabelledBy?: string;
   ariaDescribedBy?: string;
   fullWidth?: boolean;
+  dropdownMinWidth?: number;
   id?: string;
 }
 
@@ -41,13 +42,14 @@ const DROPDOWN_Z_INDEX = 2010;
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
-const resolveDropdownStyle = (element: HTMLElement): CSSProperties => {
+const resolveDropdownStyle = (element: HTMLElement, dropdownMinWidth?: number): CSSProperties => {
   const rect = element.getBoundingClientRect();
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
-  const width = Math.min(rect.width, Math.max(0, viewportWidth - VIEWPORT_MARGIN * 2));
+  const availableWidth = Math.max(0, viewportWidth - VIEWPORT_MARGIN * 2);
+  const width = Math.min(Math.max(rect.width, dropdownMinWidth ?? 0), availableWidth);
   const left = clamp(
-    rect.left,
+    rect.left - (width - rect.width) / 2,
     VIEWPORT_MARGIN,
     Math.max(VIEWPORT_MARGIN, viewportWidth - width - VIEWPORT_MARGIN)
   );
@@ -90,6 +92,7 @@ export function Select({
   ariaLabelledBy,
   ariaDescribedBy,
   fullWidth = true,
+  dropdownMinWidth,
   id,
 }: SelectProps) {
   const generatedId = useId();
@@ -116,8 +119,8 @@ export function Select({
 
   const updateDropdownStyle = useCallback(() => {
     if (!wrapRef.current) return;
-    setDropdownStyle(resolveDropdownStyle(wrapRef.current));
-  }, []);
+    setDropdownStyle(resolveDropdownStyle(wrapRef.current, dropdownMinWidth));
+  }, [dropdownMinWidth]);
 
   const scheduleDropdownStyleUpdate = useCallback(() => {
     if (typeof window === 'undefined') return;

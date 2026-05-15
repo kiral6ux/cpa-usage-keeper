@@ -73,6 +73,7 @@ export function AuthFileCredentialsSection({ rows, total, page, totalPages, page
                 {row.cacheRate !== null && <MetricPill label={t('usage_stats.cache_rate')} value={<TonePercent value={row.cacheRate} tone={cacheRateTone(row.cacheRate)} />} />}
               </>
             )}
+            rowClassName={styles.authFileCredentialRow}
             side={(
               <div className={styles.credentialQuotaSideWithAction}>
                 <AuthFileQuotaPanel row={row} />

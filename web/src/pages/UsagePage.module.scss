@@ -442,14 +442,6 @@
     margin 340ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.usageFilterBarCollapsed {
-  max-height: 0;
-  margin-top: -12px;
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(-8px);
-}
-
 .usageFilterField {
   display: flex;
   flex-direction: column;
@@ -503,8 +495,8 @@
 }
 
 .apiKeySelectControl {
-  width: 150px;
-  flex: 0 0 150px;
+  width: 172px;
+  flex: 0 0 172px;
 
   :global(button) {
     height: 34px;
@@ -564,6 +556,13 @@
   transform: translateX(0);
 }
 
+.usageRefreshSlot {
+  display: flex;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
 .usageFilterActions {
   display: flex;
   align-items: center;
@@ -601,25 +600,6 @@
     flex-wrap: wrap;
     width: 100%;
     border-radius: 24px;
-  }
-}
-
-.timeRangeGroupCollapsed {
-  max-width: 0;
-  min-height: 0;
-  padding-left: 0;
-  padding-right: 0;
-  border-width: 0;
-  opacity: 0;
-  pointer-events: none;
-  transform: translateX(8px);
-
-  @include mobile {
-    width: 0;
-    max-height: 0;
-    padding-top: 0;
-    padding-bottom: 0;
-    flex-basis: 0;
   }
 }
 
@@ -759,8 +739,12 @@
     transform: translateY(0);
   }
 
-  .usageFilterActions {
+  .usageRefreshSlot {
     margin-left: auto;
+  }
+
+  .usageFilterActions {
+    margin-left: 0;
   }
 
   .timeRangeGroup {
@@ -801,6 +785,7 @@
   .usageFilterField,
   .customRangeFieldGroup,
   .customRangeField,
+  .usageRefreshSlot,
   .usageFilterActions,
   .refreshSwitcher,
   .refreshPill {
@@ -812,11 +797,16 @@
   }
 
   .apiKeyFilterField,
-  .rangeFilterField,
-  .apiKeySelectControl,
-  .rangeSelectControl {
+  .rangeFilterField {
     flex-basis: 100%;
     width: 100%;
+  }
+
+  .apiKeySelectControl,
+  .rangeSelectControl {
+    width: 100%;
+    max-width: 100%;
+    flex: 1 1 auto;
   }
 
   .apiKeyFilterField,
@@ -842,6 +832,7 @@
     width: 100%;
   }
 
+  .usageRefreshSlot,
   .usageFilterActions {
     margin-left: 0;
   }

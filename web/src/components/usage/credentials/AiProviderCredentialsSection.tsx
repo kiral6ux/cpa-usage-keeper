@@ -41,6 +41,7 @@ export function AiProviderCredentialsSection({ rows, total, page, totalPages, pa
             </>
           )}
           side={<AiProviderTrafficPanel row={row} />}
+          rowClassName={styles.aiProviderCredentialRow}
         />
       ))}
       <CredentialsPagination
