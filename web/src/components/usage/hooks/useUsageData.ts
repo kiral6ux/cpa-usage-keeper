@@ -2,6 +2,7 @@ import { useEffect, useCallback } from 'react';
 import { ApiError } from '@/lib/api';
 import type { UsageOverviewResponse, UsageSnapshot, UsageTimeRange } from '@/lib/types';
 import { USAGE_STATS_STALE_TIME_MS, useUsageStatsStore } from '@/stores';
+import { buildUsageRangeQuery, normalizeUsageRange } from '@/utils/usage/rangeQuery';
 
 export type UsagePayload = Partial<UsageSnapshot>;
 
@@ -26,16 +27,7 @@ export interface UseUsageDataOptions {
   apiKeyId?: string;
 }
 
-export const normalizeUsageOverviewRange = (value: string): UsageTimeRange => (
-  value === '4h' || value === '8h' || value === '12h' || value === '24h' || value === 'today' || value === 'yesterday' || value === '7d' || value === '30d' || value === 'custom'
-    ? value
-    : '8h'
-);
-
-const toCustomDateParam = (value: string | undefined): string | undefined => {
-  const trimmed = value?.trim();
-  return trimmed && /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? trimmed : undefined;
-};
+export const normalizeUsageOverviewRange = normalizeUsageRange;
 
 export function useUsageData(options: UseUsageDataOptions = {}): UseUsageDataReturn {
   const { onAuthRequired, range = '8h', customStart, customEnd, enabled = true, apiKeyId } = options;
@@ -45,10 +37,11 @@ export function useUsageData(options: UseUsageDataOptions = {}): UseUsageDataRet
   const lastRefreshedAtTs = useUsageStatsStore((state) => state.lastRefreshedAt);
   const loadUsageStats = useUsageStatsStore((state) => state.loadUsageStats);
 
-  const resolvedRange = normalizeUsageOverviewRange(range);
-  const requestStart = resolvedRange === 'custom' ? toCustomDateParam(customStart) : undefined;
-  const requestEnd = resolvedRange === 'custom' ? toCustomDateParam(customEnd) : undefined;
-  const customRangeReady = resolvedRange !== 'custom' || (requestStart !== undefined && requestEnd !== undefined);
+  const rangeQuery = buildUsageRangeQuery({ range, customStart, customEnd });
+  const resolvedRange = rangeQuery.range;
+  const requestStart = rangeQuery.start;
+  const requestEnd = rangeQuery.end;
+  const customRangeReady = rangeQuery.valid;
 
   const loadUsage = useCallback(async () => {
     if (!customRangeReady) return;

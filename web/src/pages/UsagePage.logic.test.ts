@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildCustomDateRangeQuery, getCustomDateRangeBounds, getOverviewChartEndMs, getOverviewDisplayLoading, getOverviewHourWindowHours, getPreferredOverviewChartPeriod, getTimeRangeOptions, getUsageTabOptions, isCustomDateWithinBounds, openDateInputPicker, refreshPageData, sanitizeRequestEventFilters, scheduleOverviewAutoRefresh, shouldAutoRefreshUsageTab, shouldShowRangeControls, shouldShowUpdateCheckButton, getUpdateCheckToastDuration } from './UsagePage';
+import { buildCustomDateRangeQuery, getCustomDateRangeBounds, getOverviewChartEndMs, getOverviewDisplayLoading, getOverviewHourWindowHours, getPreferredOverviewChartPeriod, getTimeRangeOptions, getUsageTabOptions, isCustomDateWithinBounds, openDateInputPicker, refreshPageData, sanitizeRequestEventFilters, scheduleOverviewAutoRefresh, shouldAutoRefreshUsageTab, shouldShowApiKeyFilter, shouldShowRangeControls, shouldShowUpdateCheckButton, getUpdateCheckToastDuration } from './UsagePage';
 import { filterUsageByWindow, type UsageFilterWindow } from '@/utils/usage';
 import type { UsageSnapshot } from '@/lib/types';
 
@@ -294,6 +294,18 @@ for (const [tab, expected] of [
   });
 }
 
+for (const [tab, expected] of [
+  ['overview', true],
+  ['analysis', true],
+  ['events', true],
+  ['credentials', false],
+  ['settings', false],
+] as const) {
+  it(`returns ${expected} for ${tab} API Key filter visibility`, () => {
+    expect(shouldShowApiKeyFilter(tab)).toBe(expected);
+  });
+}
+
 describe('UsagePage time range options', () => {
   it('includes rolling 24h, local Today, Yesterday, and 30d ranges', () => {
     const options = getTimeRangeOptions((key) => `translated:${key}`);
@@ -416,9 +428,9 @@ describe('UsagePage tab labels', () => {
 
     expect(labels).toEqual([
       'translated:usage_stats.tab_overview',
-      'translated:usage_stats.tab_credentials',
-      'translated:usage_stats.tab_events',
       'translated:usage_stats.tab_analysis',
+      'translated:usage_stats.tab_events',
+      'translated:usage_stats.tab_credentials',
       'translated:usage_stats.tab_settings',
     ]);
   });

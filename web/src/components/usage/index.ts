@@ -1,8 +1,7 @@
 export { StatCards } from './StatCards';
 export { UsageChart } from './UsageChart';
 export { ChartLineSelector } from './ChartLineSelector';
-export { ApiDetailsCard } from './ApiDetailsCard';
-export { ModelStatsCard } from './ModelStatsCard';
+export { AnalysisPanel } from './analysis';
 export { ApiKeySettingsCard } from './ApiKeySettingsCard';
 export { PriceSettingsCard } from './PriceSettingsCard';
 export { AiProviderCredentialsSection, AuthFileCredentialsSection, useCredentialsTabData } from './credentials';
