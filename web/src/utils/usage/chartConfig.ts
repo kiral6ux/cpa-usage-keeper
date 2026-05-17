@@ -36,7 +36,7 @@ export function buildChartOptions({
   valueFormatter,
   tooltipValueFormatter
 }: ChartConfigOptions): ChartOptions<'line'> {
-  const pointRadius = isMobile && period === 'hour' ? 0 : isMobile ? 2 : 4;
+  const pointRadius = isMobile ? 2 : 4;
   const tickFontSize = isMobile ? 10 : 12;
   const maxTickLabelCount = isMobile ? (period === 'hour' ? 8 : 6) : period === 'hour' ? 12 : 10;
   const gridColor = isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(17, 24, 39, 0.06)';

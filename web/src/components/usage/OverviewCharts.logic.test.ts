@@ -746,6 +746,24 @@ describe('overview chart data flow', () => {
     } as never)).toBe('Input: 2.50B tokens');
   });
 
+  it('keeps mobile hourly overview chart data points visible without changing desktop point size', () => {
+    const mobileOptions = buildChartOptions({
+      period: 'hour',
+      labels: Array.from({ length: 25 }, (_, index) => `${String(index).padStart(2, '0')}:00`),
+      isDark: false,
+      isMobile: true,
+    });
+    const desktopOptions = buildChartOptions({
+      period: 'hour',
+      labels: Array.from({ length: 25 }, (_, index) => `${String(index).padStart(2, '0')}:00`),
+      isDark: false,
+      isMobile: false,
+    });
+
+    expect(mobileOptions.elements?.point?.radius).toBeGreaterThan(0);
+    expect(desktopOptions.elements?.point?.radius).toBe(4);
+  });
+
   it('keeps overview hour charts capped to the latest 24 hours even when the query range is 7d', () => {
     const usageWithSevenDaysOfDetails = {
       ...overviewUsage.usage,

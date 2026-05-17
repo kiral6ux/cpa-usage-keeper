@@ -207,20 +207,20 @@ describe('UsagePage Overview auto-refresh', () => {
 
 describe('UsagePage active tab auto-refresh guard', () => {
   it('allows Request Events auto-refresh only on the first page', () => {
-    expect(shouldAutoRefreshUsageTab({ activeTab: 'events', eventsPage: 1, authFilePage: 1, aiProviderPage: 1 })).toBe(true);
-    expect(shouldAutoRefreshUsageTab({ activeTab: 'events', eventsPage: 2, authFilePage: 1, aiProviderPage: 1 })).toBe(false);
+    expect(shouldAutoRefreshUsageTab({ activeTab: 'events', eventsPage: 1 })).toBe(true);
+    expect(shouldAutoRefreshUsageTab({ activeTab: 'events', eventsPage: 2 })).toBe(false);
   });
 
-  it('allows Credentials auto-refresh only when both lists are on the first page', () => {
-    expect(shouldAutoRefreshUsageTab({ activeTab: 'credentials', eventsPage: 1, authFilePage: 1, aiProviderPage: 1 })).toBe(true);
-    expect(shouldAutoRefreshUsageTab({ activeTab: 'credentials', eventsPage: 1, authFilePage: 2, aiProviderPage: 1 })).toBe(false);
-    expect(shouldAutoRefreshUsageTab({ activeTab: 'credentials', eventsPage: 1, authFilePage: 1, aiProviderPage: 2 })).toBe(false);
+  it('does not auto-refresh Credentials', () => {
+    expect(shouldAutoRefreshUsageTab({ activeTab: 'credentials', eventsPage: 1 })).toBe(false);
+    expect(shouldAutoRefreshUsageTab({ activeTab: 'credentials', eventsPage: 1 })).toBe(false);
+    expect(shouldAutoRefreshUsageTab({ activeTab: 'credentials', eventsPage: 1 })).toBe(false);
   });
 
   it('keeps Overview auto-refresh enabled and does not auto-refresh other tabs', () => {
-    expect(shouldAutoRefreshUsageTab({ activeTab: 'overview', eventsPage: 2, authFilePage: 2, aiProviderPage: 2 })).toBe(true);
-    expect(shouldAutoRefreshUsageTab({ activeTab: 'analysis', eventsPage: 1, authFilePage: 1, aiProviderPage: 1 })).toBe(false);
-    expect(shouldAutoRefreshUsageTab({ activeTab: 'settings', eventsPage: 1, authFilePage: 1, aiProviderPage: 1 })).toBe(false);
+    expect(shouldAutoRefreshUsageTab({ activeTab: 'overview', eventsPage: 2 })).toBe(true);
+    expect(shouldAutoRefreshUsageTab({ activeTab: 'analysis', eventsPage: 1 })).toBe(false);
+    expect(shouldAutoRefreshUsageTab({ activeTab: 'settings', eventsPage: 1 })).toBe(false);
   });
 });
 

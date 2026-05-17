@@ -3,6 +3,7 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { IconRefreshCw } from '@/components/ui/icons'
 import styles from './CredentialSections.module.scss'
 import type { AuthFileCredentialRow, DisplayQuota, PlanTypeTone } from './credentialViewModels'
+import type { UsageIdentityPageSort } from '@/lib/api'
 import { CredentialBadge, CredentialRowShell, CredentialSectionShell, CredentialsPagination, MetricPill, RequestMetric, TonePercent, cacheRateTone, capitalize, credentialToneClassName, formatCredentialNumber, successRateTone } from './CredentialSectionShell'
 
 interface AuthFileCredentialsSectionProps {
@@ -11,16 +12,20 @@ interface AuthFileCredentialsSectionProps {
   page: number
   totalPages: number
   pageSize: number
+  activeOnly: boolean
+  sort: UsageIdentityPageSort
   loading: boolean
   quotaRefreshing: boolean
   quotaRefreshError: string
   onPageChange: (page: number) => void
   onPageSizeChange: (pageSize: number) => void
+  onActiveOnlyChange: (activeOnly: boolean) => void
+  onSortChange: (sort: UsageIdentityPageSort) => void
   onRefreshQuota: () => Promise<void>
   onRefreshQuotaForAuthIndex: (authIndex: string) => Promise<void>
 }
 
-export function AuthFileCredentialsSection({ rows, total, page, totalPages, pageSize, loading, quotaRefreshing, quotaRefreshError, onPageChange, onPageSizeChange, onRefreshQuota, onRefreshQuotaForAuthIndex }: AuthFileCredentialsSectionProps) {
+export function AuthFileCredentialsSection({ rows, total, page, totalPages, pageSize, activeOnly, sort, loading, quotaRefreshing, quotaRefreshError, onPageChange, onPageSizeChange, onActiveOnlyChange, onSortChange, onRefreshQuota, onRefreshQuotaForAuthIndex }: AuthFileCredentialsSectionProps) {
   const { t } = useTranslation()
   const canRefresh = rows.some((row) => !isRowRefreshing(row) && !row.identity.is_deleted) && !quotaRefreshing
 
@@ -30,6 +35,12 @@ export function AuthFileCredentialsSection({ rows, total, page, totalPages, page
       title={t('usage_stats.credentials_auth_files_title')}
       subtitle={t('usage_stats.credentials_auth_files_subtitle')}
       countLabel={t('usage_stats.credentials_count', { count: total })}
+      titleExtra={(
+        <label className={styles.credentialActiveOnlySwitch}>
+          <input type="checkbox" checked={activeOnly} onChange={(event) => onActiveOnlyChange(event.target.checked)} />
+          <span>{t('usage_stats.credentials_auth_files_active_only')}</span>
+        </label>
+      )}
       actions={(
         <div className={styles.credentialRefreshSwitcher}>
           <button
@@ -94,13 +105,22 @@ export function AuthFileCredentialsSection({ rows, total, page, totalPages, page
       })}
       <CredentialsPagination
         page={page}
+        total={total}
         totalPages={totalPages}
         pageSize={pageSize}
+        sortValue={sort}
+        sortLabel={t('usage_stats.credentials_sort_label')}
+        sortOptions={[
+          { value: 'priority', label: t('usage_stats.credentials_sort_priority') },
+          { value: 'total_requests', label: t('usage_stats.credentials_sort_total_requests') },
+          { value: 'total_tokens', label: t('usage_stats.credentials_sort_total_tokens') },
+        ]}
         previousLabel={t('usage_stats.previous_page')}
         nextLabel={t('usage_stats.next_page')}
         rowsPerPageLabel={t('usage_stats.rows_per_page')}
         onPageChange={onPageChange}
         onPageSizeChange={onPageSizeChange}
+        onSortChange={(nextSort) => onSortChange(nextSort as UsageIdentityPageSort)}
       />
     </CredentialSectionShell>
   )

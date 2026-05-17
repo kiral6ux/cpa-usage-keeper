@@ -17,7 +17,10 @@ type AuthFile struct {
 	Label       string           `json:"label"`
 	Status      string           `json:"status"`
 	Source      string           `json:"source"`
-	Disabled    bool             `json:"disabled"`
+	Prefix      string           `json:"prefix"`
+	Priority    *int             `json:"priority"`
+	Disabled    *bool            `json:"disabled"`
+	Note        *string          `json:"note"`
 	Unavailable bool             `json:"unavailable"`
 	RuntimeOnly bool             `json:"runtime_only"`
 	Account     string           `json:"account,omitempty"`

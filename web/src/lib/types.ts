@@ -185,6 +185,10 @@ export interface UsageIdentity {
   identity: string
   type: string
   provider: string
+  prefix: string
+  priority?: number
+  disabled: boolean
+  note?: string
   plan_type?: string
   active_start?: string
   active_until?: string

@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import styles from './CredentialSections.module.scss'
 import type { AiProviderCredentialRow } from './credentialViewModels'
+import type { UsageIdentityPageSort } from '@/lib/api'
 import { CredentialBadge, CredentialRowShell, CredentialSectionShell, CredentialsPagination, MetricPill, RequestMetric, TonePercent, cacheRateTone, formatCredentialNumber, successRateTone } from './CredentialSectionShell'
 
 interface AiProviderCredentialsSectionProps {
@@ -9,12 +10,14 @@ interface AiProviderCredentialsSectionProps {
   page: number
   totalPages: number
   pageSize: number
+  sort: UsageIdentityPageSort
   loading: boolean
   onPageChange: (page: number) => void
   onPageSizeChange: (pageSize: number) => void
+  onSortChange: (sort: UsageIdentityPageSort) => void
 }
 
-export function AiProviderCredentialsSection({ rows, total, page, totalPages, pageSize, loading, onPageChange, onPageSizeChange }: AiProviderCredentialsSectionProps) {
+export function AiProviderCredentialsSection({ rows, total, page, totalPages, pageSize, sort, loading, onPageChange, onPageSizeChange, onSortChange }: AiProviderCredentialsSectionProps) {
   const { t } = useTranslation()
 
   return (
@@ -46,13 +49,21 @@ export function AiProviderCredentialsSection({ rows, total, page, totalPages, pa
       ))}
       <CredentialsPagination
         page={page}
+        total={total}
         totalPages={totalPages}
         pageSize={pageSize}
+        sortValue={sort}
+        sortLabel={t('usage_stats.credentials_sort_label')}
+        sortOptions={[
+          { value: 'total_requests', label: t('usage_stats.credentials_sort_total_requests') },
+          { value: 'total_tokens', label: t('usage_stats.credentials_sort_total_tokens') },
+        ]}
         previousLabel={t('usage_stats.previous_page')}
         nextLabel={t('usage_stats.next_page')}
         rowsPerPageLabel={t('usage_stats.rows_per_page')}
         onPageChange={onPageChange}
         onPageSizeChange={onPageSizeChange}
+        onSortChange={(nextSort) => onSortChange(nextSort as UsageIdentityPageSort)}
       />
     </CredentialSectionShell>
   )

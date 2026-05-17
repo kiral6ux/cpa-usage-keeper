@@ -7,6 +7,7 @@ interface CredentialSectionShellProps {
   title: string
   subtitle: string
   countLabel: string
+  titleExtra?: ReactNode
   actions?: ReactNode
   children: ReactNode
 }
@@ -20,7 +21,7 @@ interface CredentialRowShellProps {
   rowClassName?: string
 }
 
-export function CredentialSectionShell({ eyebrow, title, subtitle, countLabel, actions, children }: CredentialSectionShellProps) {
+export function CredentialSectionShell({ eyebrow, title, subtitle, countLabel, titleExtra, actions, children }: CredentialSectionShellProps) {
   return (
     <section className={styles.credentialSectionCard}>
       <div className={styles.credentialSectionHeader}>
@@ -29,6 +30,7 @@ export function CredentialSectionShell({ eyebrow, title, subtitle, countLabel, a
           <div className={styles.credentialSectionTitleRow}>
             <h3 className={styles.credentialSectionTitle}>{title}</h3>
             <span className={styles.credentialCountBadge}>{countLabel}</span>
+            {titleExtra}
           </div>
           <p className={styles.credentialSectionSubtitle}>{subtitle}</p>
         </div>
@@ -114,30 +116,48 @@ const CREDENTIAL_PAGE_SIZE_OPTIONS = [5, 10, 20, 50]
 
 export function CredentialsPagination({
   page,
+  total,
   totalPages,
   pageSize,
+  sortValue,
+  sortOptions,
+  sortLabel,
   previousLabel,
   nextLabel,
   rowsPerPageLabel,
   onPageChange,
   onPageSizeChange,
+  onSortChange,
 }: {
   page: number
+  total?: number
   totalPages: number
   pageSize: number
+  sortValue?: string
+  sortOptions?: Array<{ value: string; label: string }>
+  sortLabel?: string
   previousLabel: string
   nextLabel: string
   rowsPerPageLabel: string
   onPageChange: (page: number) => void
   onPageSizeChange: (pageSize: number) => void
+  onSortChange?: (sort: string) => void
 }) {
-  if (totalPages <= 1) {
+  if (total === 0) {
     return null
   }
 
   return (
     <div className={styles.credentialPagination}>
       <div className={styles.credentialPaginationControls}>
+        {sortOptions && sortOptions.length > 0 && sortLabel && onSortChange && (
+          <label className={styles.credentialPageSizeControl}>
+            <span>{sortLabel}</span>
+            <select value={sortValue} onChange={(event) => onSortChange(event.target.value)}>
+              {sortOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+        )}
         <label className={styles.credentialPageSizeControl}>
           <span>{rowsPerPageLabel}</span>
           <select value={pageSize} onChange={(event) => onPageSizeChange(Number(event.target.value))}>

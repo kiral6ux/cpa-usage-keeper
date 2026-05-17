@@ -35,4 +35,42 @@ describe('CredentialSectionShell formatting', () => {
     expect(html).toContain('<select')
     expect(html).toContain('value="10"')
   })
+
+  it('keeps pagination controls visible for non-empty single-page sections', () => {
+    const html = renderToStaticMarkup(createElement(CredentialsPagination, {
+      page: 1,
+      total: 3,
+      totalPages: 1,
+      pageSize: 10,
+      previousLabel: 'Previous',
+      nextLabel: 'Next',
+      rowsPerPageLabel: 'Size',
+      onPageChange: () => undefined,
+      onPageSizeChange: () => undefined,
+    }))
+
+    expect(html).toContain('Size')
+    expect(html).toContain('1 / 1')
+  })
+
+  it('renders an optional sort control before pagination buttons', () => {
+    const html = renderToStaticMarkup(createElement(CredentialsPagination, {
+      page: 1,
+      total: 3,
+      totalPages: 1,
+      pageSize: 10,
+      sortValue: 'priority',
+      sortOptions: [{ value: 'priority', label: 'Priority' }],
+      sortLabel: 'Order by',
+      previousLabel: 'Previous',
+      nextLabel: 'Next',
+      rowsPerPageLabel: 'Rows',
+      onPageChange: () => undefined,
+      onPageSizeChange: () => undefined,
+      onSortChange: () => undefined,
+    }))
+
+    expect(html.indexOf('Order by')).toBeLessThan(html.indexOf('Rows'))
+    expect(html).toContain('Priority')
+  })
 })

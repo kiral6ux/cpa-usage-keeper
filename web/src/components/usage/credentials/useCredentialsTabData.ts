@@ -8,6 +8,7 @@ import {
 } from './credentialViewModels'
 import { useCredentialPages } from './useCredentialPages'
 import { useQuotaCache } from './useQuotaCache'
+import type { UsageIdentityPageSort } from '@/lib/api'
 import { quotaRefreshDisplayError, useQuotaRefreshTasks } from './useQuotaRefreshTasks'
 
 interface UseCredentialsTabDataOptions {
@@ -26,10 +27,16 @@ export interface CredentialsTabData {
   aiProviderPage: number
   authFileTotalPages: number
   aiProviderTotalPages: number
+  authFileActiveOnly: boolean
+  authFileSort: UsageIdentityPageSort
+  aiProviderSort: UsageIdentityPageSort
   setAuthFilePage: (page: number) => void
   setAiProviderPage: (page: number) => void
   setAuthFilePageSize: (pageSize: number) => void
   setAiProviderPageSize: (pageSize: number) => void
+  setAuthFileActiveOnly: (activeOnly: boolean) => void
+  setAuthFileSort: (sort: UsageIdentityPageSort) => void
+  setAiProviderSort: (sort: UsageIdentityPageSort) => void
   loading: boolean
   error: string
   quotaRefreshing: boolean
@@ -88,10 +95,16 @@ export function useCredentialsTabData({ enabled, onAuthRequired }: UseCredential
     aiProviderPage: credentialPages.aiProviderPage,
     authFileTotalPages: credentialPages.authFileTotalPages,
     aiProviderTotalPages: credentialPages.aiProviderTotalPages,
+    authFileActiveOnly: credentialPages.authFileActiveOnly,
+    authFileSort: credentialPages.authFileSort,
+    aiProviderSort: credentialPages.aiProviderSort,
     setAuthFilePage: credentialPages.setAuthFilePage,
     setAiProviderPage: credentialPages.setAiProviderPage,
     setAuthFilePageSize: credentialPages.setAuthFilePageSize,
     setAiProviderPageSize: credentialPages.setAiProviderPageSize,
+    setAuthFileActiveOnly: credentialPages.setAuthFileActiveOnly,
+    setAuthFileSort: credentialPages.setAuthFileSort,
+    setAiProviderSort: credentialPages.setAiProviderSort,
     loading: credentialPages.loading,
     error: credentialPages.error,
     quotaRefreshing: quotaRefreshTasks.quotaRefreshing,

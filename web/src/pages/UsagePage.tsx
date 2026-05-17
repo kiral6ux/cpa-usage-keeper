@@ -126,17 +126,12 @@ export const getUpdateCheckToastDuration = (kind: 'success' | 'info' | 'error') 
 export const shouldAutoRefreshUsageTab = ({
   activeTab,
   eventsPage,
-  authFilePage,
-  aiProviderPage,
 }: {
   activeTab: UsageTab;
   eventsPage: number;
-  authFilePage: number;
-  aiProviderPage: number;
 }) => {
   if (activeTab === 'overview') return true;
   if (activeTab === 'events') return eventsPage === 1;
-  if (activeTab === 'credentials') return authFilePage === 1 && aiProviderPage === 1;
   return false;
 };
 
@@ -1012,8 +1007,6 @@ export function UsagePage({ onAuthRequired }: { onAuthRequired?: () => void }) {
   const autoRefreshEnabled = shouldAutoRefreshUsageTab({
     activeTab,
     eventsPage,
-    authFilePage: credentialsData.authFilePage,
-    aiProviderPage: credentialsData.aiProviderPage,
   });
 
   const handleManualRefresh = useCallback(async () => {
@@ -1548,11 +1541,15 @@ export function UsagePage({ onAuthRequired }: { onAuthRequired?: () => void }) {
                     page={credentialsData.authFilePage}
                     totalPages={credentialsData.authFileTotalPages}
                     pageSize={credentialsData.authFilePageSize}
+                    activeOnly={credentialsData.authFileActiveOnly}
+                    sort={credentialsData.authFileSort}
                     loading={credentialsData.loading}
                     quotaRefreshing={credentialsData.quotaRefreshing}
                     quotaRefreshError={credentialsData.quotaRefreshError}
                     onPageChange={credentialsData.setAuthFilePage}
                     onPageSizeChange={credentialsData.setAuthFilePageSize}
+                    onActiveOnlyChange={credentialsData.setAuthFileActiveOnly}
+                    onSortChange={credentialsData.setAuthFileSort}
                     onRefreshQuota={credentialsData.refreshQuotaForCurrentAuthFilePage}
                     onRefreshQuotaForAuthIndex={credentialsData.refreshQuotaForAuthIndex}
                   />
@@ -1562,9 +1559,11 @@ export function UsagePage({ onAuthRequired }: { onAuthRequired?: () => void }) {
                     page={credentialsData.aiProviderPage}
                     totalPages={credentialsData.aiProviderTotalPages}
                     pageSize={credentialsData.aiProviderPageSize}
+                    sort={credentialsData.aiProviderSort}
                     loading={credentialsData.loading}
                     onPageChange={credentialsData.setAiProviderPage}
                     onPageSizeChange={credentialsData.setAiProviderPageSize}
+                    onSortChange={credentialsData.setAiProviderSort}
                   />
                 </div>
               </>

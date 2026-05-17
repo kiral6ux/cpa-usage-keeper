@@ -140,6 +140,34 @@ describe('fetchUsageEvents', () => {
     expect(analysisUrl.searchParams.get('api_key_id')).toBe('9007199254740993');
   });
 
+  it('passes credential page filters and sorting as query params', async () => {
+    vi.stubGlobal('window', { __APP_BASE_PATH__: undefined });
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ identities: [], total_count: 0, page: 1, page_size: 10, total_pages: 0 }),
+    } as Response);
+    const signal = new AbortController().signal;
+
+    await fetchUsageIdentitiesPage(signal, {
+      authType: 1,
+      page: 2,
+      pageSize: 20,
+      activeOnly: true,
+      sort: 'priority',
+    });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    const parsed = new URL(String(url), 'http://localhost');
+
+    expect(parsed.pathname).toBe('/api/v1/usage/identities/page');
+    expect(parsed.searchParams.get('auth_type')).toBe('1');
+    expect(parsed.searchParams.get('page')).toBe('2');
+    expect(parsed.searchParams.get('page_size')).toBe('20');
+    expect(parsed.searchParams.get('active_only')).toBe('true');
+    expect(parsed.searchParams.get('sort')).toBe('priority');
+    expect(init).toMatchObject({ credentials: 'include', signal });
+  });
+
   it('loads unified usage identities without query params', async () => {
     vi.stubGlobal('window', { __APP_BASE_PATH__: undefined });
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
