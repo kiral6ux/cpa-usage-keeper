@@ -126,13 +126,9 @@ export const getUpdateCheckToastDuration = (kind: 'success' | 'info' | 'error') 
 export const shouldAutoRefreshUsageTab = ({
   activeTab,
   eventsPage,
-  authFilePage,
-  aiProviderPage,
 }: {
   activeTab: UsageTab;
   eventsPage: number;
-  authFilePage: number;
-  aiProviderPage: number;
 }) => {
   if (activeTab === 'overview') return true;
   if (activeTab === 'events') return eventsPage === 1;
@@ -1011,8 +1007,6 @@ export function UsagePage({ onAuthRequired }: { onAuthRequired?: () => void }) {
   const autoRefreshEnabled = shouldAutoRefreshUsageTab({
     activeTab,
     eventsPage,
-    authFilePage: credentialsData.authFilePage,
-    aiProviderPage: credentialsData.aiProviderPage,
   });
 
   const handleManualRefresh = useCallback(async () => {
