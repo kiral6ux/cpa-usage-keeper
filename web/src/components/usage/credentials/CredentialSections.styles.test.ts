@@ -40,7 +40,7 @@ describe('Credential section styles', () => {
   })
 
   it('lets the Total Requests metric grow without changing the other metric widths', () => {
-    expect(credentialStyles).toMatch(/\.credentialMetricGroup\s*\{[\s\S]*?grid-template-columns:\s*max-content repeat\(3, 95px\);/)
+    expect(credentialStyles).toMatch(/\.credentialMetricGroup\s*\{[\s\S]*?grid-template-columns:\s*minmax\(109px, max-content\) repeat\(3, 95px\);/)
     expect(credentialStyles).toMatch(/\.credentialRequestMetric\s*\{[\s\S]*?align-items:\s*center;/)
     expect(credentialStyles).toMatch(/\.credentialRequestMetric\s*\{[\s\S]*?white-space:\s*nowrap;/)
     expect(credentialStyles).toMatch(/\.credentialRequestBreakdown\s*\{[\s\S]*?display:\s*inline-flex;/)
