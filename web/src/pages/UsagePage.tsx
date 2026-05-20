@@ -51,6 +51,7 @@ import {
   type UsageTimeRange
 } from '@/utils/usage';
 import type { Theme } from '@/types';
+import { GITHUB_REPOSITORY_URL } from '@/utils/constants';
 import styles from './UsagePage.module.scss';
 
 ChartJS.register(
@@ -1215,7 +1216,9 @@ export function UsagePage({ onAuthRequired }: { onAuthRequired?: () => void }) {
       <div className={styles.pageFrame}>
         <header className={styles.topBar}>
           <div className={styles.brandBlock}>
-            <span className={styles.eyebrow}>CPA Usage Keeper</span>
+            <a className={`${styles.eyebrow} ${styles.brandLink}`} href={GITHUB_REPOSITORY_URL} target="_blank" rel="noreferrer">
+              CPA Usage Keeper
+            </a>
           </div>
           <div className={styles.topBarActions}>
             <LanguageSwitcher />

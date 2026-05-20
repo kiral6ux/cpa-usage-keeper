@@ -19,6 +19,7 @@ import {
   useSparklines,
 } from '@/components/usage';
 import type { UsageOverviewPayload } from '@/components/usage/hooks/useUsageData';
+import { GITHUB_REPOSITORY_URL } from '@/utils/constants';
 import {
   getModelNamesFromUsage,
   resolveUsageFilterWindow,
@@ -307,7 +308,9 @@ export function KeyOverviewPage({ apiKey, onAuthRequired }: KeyOverviewPageProps
       <div className={styles.pageFrame}>
         <header className={styles.topBar}>
           <div className={styles.brandBlock}>
-            <span className={styles.eyebrow}>CPA Usage Keeper</span>
+            <a className={`${styles.eyebrow} ${styles.brandLink}`} href={GITHUB_REPOSITORY_URL} target="_blank" rel="noreferrer">
+              CPA Usage Keeper
+            </a>
           </div>
           <div className={styles.topBarActions}>
             <span className={styles.identityChip} title={identityLabel}>
