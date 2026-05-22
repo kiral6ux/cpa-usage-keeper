@@ -96,11 +96,8 @@ func TestRedisIngestRunnerInfoLogsSubscribeBackfillOnce(t *testing.T) {
 	go func() { _ = runner.Run(ctx) }()
 
 	_ = writer.waitForInsert(t)
+	output := waitForLogContains(t, logs, "redis subscribe backfill used redis pull")
 	cancel()
-	output := logs.String()
-	if !strings.Contains(output, "redis subscribe backfill used redis pull") {
-		t.Fatalf("expected subscribe backfill result at info level, got logs: %s", output)
-	}
 	if strings.Contains(output, "redis ingest pulled usage messages") {
 		t.Fatalf("expected per-pull loop counts to stay below info level, got logs: %s", output)
 	}
@@ -123,11 +120,11 @@ func TestRedisIngestRunnerDebugLogsSubscribeMessageCounts(t *testing.T) {
 
 	sub.messages <- `{"request_id":"subscribe"}`
 	entry := writer.waitForInsert(t)
+	output := waitForLogContains(t, logs, "redis subscribe messages received", "message_count=1", "inserted_count=1")
 	cancel()
 	if entry.source != poller.RedisIngestSourceSubscribe {
 		t.Fatalf("expected subscribe source, got %q", entry.source)
 	}
-	output := logs.String()
 	if !strings.Contains(output, "redis subscribe messages received") || !strings.Contains(output, "message_count=1") || !strings.Contains(output, "inserted_count=1") {
 		t.Fatalf("expected subscribe debug receive counts, got logs: %s", output)
 	}
