@@ -59,19 +59,19 @@ func TestRefreshCreatesTaskPerAuthIndexAndCachesCompletedQuota(t *testing.T) {
 		t.Fatalf("unexpected refresh response: %+v", response)
 	}
 
-	task := waitForRefreshTask(t, service, response.Tasks[0].TaskID, RefreshTaskStatusCompleted)
+	task := waitForRefreshTask(t, service, response.Tasks[0].AuthIndex, RefreshTaskStatusCompleted)
 	if task.AuthIndex != "auth-1" || task.Quota == nil || task.Quota.ID != "auth-1" || len(task.Quota.Quota) != 1 {
 		t.Fatalf("expected completed task to expose cached quota, got %+v", task)
 	}
 	if task.ExpiresAt != nil {
 		t.Fatalf("expected completed quota cache to have no expiry, got %v", task.ExpiresAt)
 	}
-	service.cleanupExpiredRefreshTasks(time.Now().Add(defaultRefreshTaskTTL * 2))
+	service.cleanupExpiredRefreshTasks(time.Now().Add(RefreshTransientTaskTTL * 2))
 	cache, err := service.GetCachedQuota(context.Background(), CacheRequest{AuthIndexes: []string{"auth-1"}})
 	if err != nil {
 		t.Fatalf("GetCachedQuota returned error: %v", err)
 	}
-	if len(cache.Items) != 1 || cache.Items[0].ID != "auth-1" {
+	if len(cache.Items) != 1 || cache.Items[0].AuthIndex != "auth-1" || cache.Items[0].Quota == nil || cache.Items[0].Quota.ID != "auth-1" {
 		t.Fatalf("expected completed quota cache to survive cleanup, got %+v", cache)
 	}
 	if handler.callCount() != 1 {
@@ -79,7 +79,7 @@ func TestRefreshCreatesTaskPerAuthIndexAndCachesCompletedQuota(t *testing.T) {
 	}
 }
 
-func TestRefreshPrunesPreviousCompletedTaskForSameAuthIndex(t *testing.T) {
+func TestRefreshOverwritesPreviousCompletedTaskForSameAuthIndex(t *testing.T) {
 	db := openQuotaTestDatabase(t)
 	seedUsageIdentity(t, db, entities.UsageIdentity{Identity: "auth-1", Provider: "claude", Type: "auth-file", AuthType: entities.UsageIdentityAuthTypeAuthFile})
 	handler := &refreshHandlerStub{output: ProviderOutput{Result: ClaudeResult{Usage: &ClaudeUsagePayload{FiveHour: &ClaudeUsageWindow{Utilization: 25}}}}}
@@ -89,25 +89,19 @@ func TestRefreshPrunesPreviousCompletedTaskForSameAuthIndex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first Refresh returned error: %v", err)
 	}
-	firstTask := waitForRefreshTask(t, service, first.Tasks[0].TaskID, RefreshTaskStatusCompleted)
+	waitForRefreshTask(t, service, first.Tasks[0].AuthIndex, RefreshTaskStatusCompleted)
 
 	handler.output = ProviderOutput{Result: ClaudeResult{Usage: &ClaudeUsagePayload{FiveHour: &ClaudeUsageWindow{Utilization: 60}}}}
 	second, err := service.Refresh(context.Background(), RefreshRequest{AuthIndexes: []string{"auth-1"}, Source: RefreshSourceManual})
 	if err != nil {
 		t.Fatalf("second Refresh returned error: %v", err)
 	}
-	secondTask := waitForRefreshTask(t, service, second.Tasks[0].TaskID, RefreshTaskStatusCompleted)
-	if firstTask.TaskID == secondTask.TaskID {
-		t.Fatalf("expected a new task id for the second refresh, got %s", secondTask.TaskID)
-	}
-	if _, err := service.GetRefreshTask(context.Background(), firstTask.TaskID); !errors.Is(err, ErrTaskNotFound) {
-		t.Fatalf("expected first task to be pruned, got error %v", err)
-	}
+	waitForRefreshTask(t, service, second.Tasks[0].AuthIndex, RefreshTaskStatusCompleted)
 	cache, err := service.GetCachedQuota(context.Background(), CacheRequest{AuthIndexes: []string{"auth-1"}})
 	if err != nil {
 		t.Fatalf("GetCachedQuota returned error: %v", err)
 	}
-	if len(cache.Items) != 1 || cache.Items[0].Quota[0].UsedPercent == nil || *cache.Items[0].Quota[0].UsedPercent != 60 {
+	if len(cache.Items) != 1 || cache.Items[0].Quota == nil || cache.Items[0].Quota.Quota[0].UsedPercent == nil || *cache.Items[0].Quota.Quota[0].UsedPercent != 60 {
 		t.Fatalf("expected cache to expose latest quota, got %+v", cache)
 	}
 }
@@ -132,7 +126,7 @@ func TestRefreshRejectsInvalidEntriesAndIgnoresRunningTask(t *testing.T) {
 		t.Fatalf("unexpected rejected entries: %+v", response.Rejected)
 	}
 
-	firstTaskID := response.Tasks[0].TaskID
+	firstTaskID := response.Tasks[0].AuthIndex
 	waitForRefreshTask(t, service, firstTaskID, RefreshTaskStatusRunning)
 	second, err := service.Refresh(context.Background(), RefreshRequest{AuthIndexes: []string{"auth-1"}, Source: RefreshSourceManual})
 	if err != nil {
@@ -148,12 +142,41 @@ func TestRefreshRejectsInvalidEntriesAndIgnoresRunningTask(t *testing.T) {
 	}
 }
 
-func TestRefreshQueueUsesFiveWorkersAndTwentySecondTimeout(t *testing.T) {
-	if defaultRefreshWorkerLimit != 5 {
-		t.Fatalf("expected refresh worker limit 5, got %d", defaultRefreshWorkerLimit)
+func TestRefreshQueueUsesConfiguredWorkersTimeoutAndCooldown(t *testing.T) {
+	if RefreshWorkerLimit != 10 {
+		t.Fatalf("expected refresh worker limit 10, got %d", RefreshWorkerLimit)
 	}
-	if defaultRefreshTaskTimeout != 20*time.Second {
-		t.Fatalf("expected refresh task timeout 20s, got %s", defaultRefreshTaskTimeout)
+	if RefreshTaskTimeout != 20*time.Second {
+		t.Fatalf("expected refresh task timeout 20s, got %s", RefreshTaskTimeout)
+	}
+	if RefreshTaskCooldown != time.Second {
+		t.Fatalf("expected refresh task cooldown 1s, got %s", RefreshTaskCooldown)
+	}
+}
+
+func TestRefreshTaskWaitsForCooldownBeforeReleasingWorker(t *testing.T) {
+	db := openQuotaTestDatabase(t)
+	seedUsageIdentity(t, db, entities.UsageIdentity{Identity: "auth-1", Provider: "claude", Type: "auth-file", AuthType: entities.UsageIdentityAuthTypeAuthFile})
+	handler := &refreshHandlerStub{output: ProviderOutput{Result: ClaudeResult{Usage: &ClaudeUsagePayload{FiveHour: &ClaudeUsageWindow{Utilization: 25}}}}}
+	service := NewServiceWithRegistry(db, NewProviderRegistry(map[string]ProviderHandler{"claude": handler}))
+	cooldownCalls := make(chan time.Duration, 1)
+	service.refreshCooldown = func(duration time.Duration) {
+		cooldownCalls <- duration
+	}
+
+	response, err := service.Refresh(context.Background(), RefreshRequest{AuthIndexes: []string{"auth-1"}, Source: RefreshSourceManual})
+	if err != nil {
+		t.Fatalf("Refresh returned error: %v", err)
+	}
+	waitForRefreshTask(t, service, response.Tasks[0].AuthIndex, RefreshTaskStatusCompleted)
+
+	select {
+	case duration := <-cooldownCalls:
+		if duration != RefreshTaskCooldown {
+			t.Fatalf("expected cooldown %s, got %s", RefreshTaskCooldown, duration)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected refresh task to call cooldown")
 	}
 }
 
@@ -167,9 +190,43 @@ func TestRefreshTaskFailureReturnsFriendlyMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Refresh returned error: %v", err)
 	}
-	task := waitForRefreshTask(t, service, response.Tasks[0].TaskID, RefreshTaskStatusFailed)
+	task := waitForRefreshTask(t, service, response.Tasks[0].AuthIndex, RefreshTaskStatusFailed)
 	if task.Error != "Quota refresh failed. Please try again later." {
 		t.Fatalf("expected friendly error message, got %q", task.Error)
+	}
+	cache, err := service.GetCachedQuota(context.Background(), CacheRequest{AuthIndexes: []string{"auth-1"}})
+	if err != nil {
+		t.Fatalf("GetCachedQuota returned error: %v", err)
+	}
+	if len(cache.Items) != 0 {
+		t.Fatalf("expected transient failure to stay out of page cache, got %+v", cache.Items)
+	}
+}
+
+func TestRefreshTaskCachesConfiguredHTTPError(t *testing.T) {
+	db := openQuotaTestDatabase(t)
+	seedUsageIdentity(t, db, entities.UsageIdentity{Identity: "auth-1", Provider: "claude", Type: "auth-file", AuthType: entities.UsageIdentityAuthTypeAuthFile})
+	handler := &refreshHandlerStub{err: ProviderHTTPError{StatusCode: 401, Message: "expired token"}}
+	service := NewServiceWithRegistry(db, NewProviderRegistry(map[string]ProviderHandler{"claude": handler}))
+
+	response, err := service.Refresh(context.Background(), RefreshRequest{AuthIndexes: []string{"auth-1"}, Source: RefreshSourceManual})
+	if err != nil {
+		t.Fatalf("Refresh returned error: %v", err)
+	}
+	task := waitForRefreshTask(t, service, response.Tasks[0].AuthIndex, RefreshTaskStatusFailed)
+	if task.HTTPStatusCode == nil || *task.HTTPStatusCode != 401 {
+		t.Fatalf("expected task to expose HTTP status 401, got %+v", task)
+	}
+	if task.ExpiresAt == nil || task.ExpiresAt.Sub(*task.CachedAt) != RefreshErrorCacheTTL {
+		t.Fatalf("expected 401 cache TTL %s, got cachedAt=%v expiresAt=%v", RefreshErrorCacheTTL, task.CachedAt, task.ExpiresAt)
+	}
+
+	cache, err := service.GetCachedQuota(context.Background(), CacheRequest{AuthIndexes: []string{"auth-1"}})
+	if err != nil {
+		t.Fatalf("GetCachedQuota returned error: %v", err)
+	}
+	if len(cache.Items) != 1 || cache.Items[0].Status != RefreshTaskStatusFailed || cache.Items[0].HTTPStatusCode == nil || *cache.Items[0].HTTPStatusCode != 401 {
+		t.Fatalf("expected cached failed item with HTTP 401, got %+v", cache.Items)
 	}
 }
 
@@ -199,19 +256,19 @@ func seedUsageIdentity(t *testing.T, db *gorm.DB, identity entities.UsageIdentit
 	}
 }
 
-func waitForRefreshTask(t *testing.T, service *Service, taskID string, status RefreshTaskStatus) RefreshTaskResponse {
+func waitForRefreshTask(t *testing.T, service *Service, authIndex string, status RefreshTaskStatus) RefreshTaskResponse {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	var task RefreshTaskResponse
 	var err error
 	for time.Now().Before(deadline) {
-		task, err = service.GetRefreshTask(context.Background(), taskID)
+		task, err = service.GetRefreshTaskByAuthIndex(context.Background(), authIndex)
 		if err == nil && task.Status == status {
 			return task
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	t.Fatalf("task %s did not reach status %s, last task=%+v err=%v", taskID, status, task, err)
+	t.Fatalf("auth_index %s did not reach status %s, last task=%+v err=%v", authIndex, status, task, err)
 	return RefreshTaskResponse{}
 }
 

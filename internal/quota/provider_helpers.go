@@ -2,7 +2,6 @@ package quota
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"cpa-usage-keeper/internal/cpa/dto/apicall"
@@ -24,7 +23,7 @@ func mergeHeaders(base map[string]string, overrides map[string]string) map[strin
 }
 
 func targetHTTPError(response *apicall.Response) error {
-	return fmt.Errorf("HTTP %d: %s", response.StatusCode, targetErrorMessage(response))
+	return ProviderHTTPError{StatusCode: response.StatusCode, Message: targetErrorMessage(response)}
 }
 
 func targetErrorMessage(response *apicall.Response) string {

@@ -78,19 +78,19 @@ func registerQuotaRoutes(router gin.IRoutes, provider QuotaProvider) {
 		c.JSON(http.StatusOK, response)
 	})
 
-	router.GET("/quota/refresh/:task_id", func(c *gin.Context) {
+	router.GET("/quota/refresh/:auth_index", func(c *gin.Context) {
 		if provider == nil {
 			writeInternalError(c, "quota provider is not configured", nil)
 			return
 		}
-		taskID := strings.TrimSpace(c.Param("task_id"))
-		if taskID == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "task_id is required"})
+		authIndex := strings.TrimSpace(c.Param("auth_index"))
+		if authIndex == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "auth_index is required"})
 			return
 		}
 
-		// 前端轮询只根据 task_id 查询任务状态，完成时直接带回缓存中的 quota。
-		response, err := provider.GetRefreshTask(c.Request.Context(), taskID)
+		// 前端轮询直接以 auth_index 查询任务状态，避免维护额外 taskId 映射。
+		response, err := provider.GetRefreshTaskByAuthIndex(c.Request.Context(), authIndex)
 		if err != nil {
 			switch {
 			case errors.Is(err, quota.ErrTaskNotFound):

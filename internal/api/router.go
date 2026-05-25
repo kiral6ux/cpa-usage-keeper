@@ -29,7 +29,7 @@ type StatusProvider interface {
 type QuotaProvider interface {
 	GetCachedQuota(context.Context, quota.CacheRequest) (quota.CacheResponse, error)
 	Refresh(context.Context, quota.RefreshRequest) (quota.RefreshResponse, error)
-	GetRefreshTask(context.Context, string) (quota.RefreshTaskResponse, error)
+	GetRefreshTaskByAuthIndex(context.Context, string) (quota.RefreshTaskResponse, error)
 }
 
 type StatusRouteConfig struct {

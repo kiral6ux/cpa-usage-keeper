@@ -21,6 +21,8 @@ func TestOpenDatabaseAddsUsagePerformanceIndexes(t *testing.T) {
 		"idx_usage_events_api_group_key",
 		"idx_usage_events_auth_index",
 		"idx_usage_events_model",
+		"idx_usage_events_source",
+		"idx_usage_events_auth_index_timestamp_id",
 		"idx_usage_events_auth_type_auth_index_id",
 		"idx_redis_usage_inboxes_status_id",
 		"idx_redis_usage_inboxes_status_processed_at",
@@ -36,7 +38,6 @@ func TestOpenDatabaseAddsUsagePerformanceIndexes(t *testing.T) {
 
 	for _, indexName := range []string{
 		"idx_usage_events_timestamp",
-		"idx_usage_events_source",
 		"idx_usage_events_trim_model",
 		"idx_usage_events_trim_source",
 		"idx_usage_events_trim_auth_index",

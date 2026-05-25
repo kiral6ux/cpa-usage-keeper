@@ -1,5 +1,36 @@
 package quota
 
+import "time"
+
+const (
+	// RefreshWorkerLimit 控制限额刷新队列的最大并发 worker 数，手动刷新和自动刷新共用同一套队列。
+	RefreshWorkerLimit = 10
+
+	// RefreshTaskTimeout 限制单次 provider 限额查询的最长执行时间，避免上游长时间无响应时占住 worker。
+	RefreshTaskTimeout = 20 * time.Second
+
+	// RefreshTaskCooldown 是每个 worker 完成一次刷新后的冷却时间，冷却结束后才允许处理下一条任务。
+	RefreshTaskCooldown = 1 * time.Second
+
+	// RefreshTransientTaskTTL 是普通失败在内存中的短期保留时间，只用于当前页面轮询读取失败结果。
+	RefreshTransientTaskTTL = 20 * time.Minute
+
+	// AutoRefreshInterval 是后台自动刷新 Auth Files 限额的调度间隔。
+	AutoRefreshInterval = 10 * time.Minute
+
+	// RefreshErrorCacheTTL 是可恢复展示的 HTTP 错误缓存时间，过期后自动刷新可以重新尝试。
+	RefreshErrorCacheTTL = 4 * time.Hour
+)
+
+// RefreshCacheableHTTPStatusCodes 定义会写入页面恢复缓存并被自动刷新跳过的 provider HTTP 状态码。
+var RefreshCacheableHTTPStatusCodes = map[int]struct{}{
+	401: {},
+	402: {},
+}
+
+// AutoRefreshHTTPStatusSkipCodes 复用可缓存错误码配置，后续新增自动跳过状态码只需要改一处。
+var AutoRefreshHTTPStatusSkipCodes = RefreshCacheableHTTPStatusCodes
+
 type APICallConfig struct {
 	Method  string
 	URL     string

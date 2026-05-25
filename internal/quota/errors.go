@@ -2,6 +2,7 @@ package quota
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 )
 
@@ -12,6 +13,19 @@ var (
 	ErrProviderInput   = errors.New("quota provider input is invalid")
 	ErrTaskNotFound    = errors.New("quota refresh task not found")
 )
+
+type ProviderHTTPError struct {
+	StatusCode int
+	Message    string
+}
+
+func (e ProviderHTTPError) Error() string {
+	message := strings.TrimSpace(e.Message)
+	if message == "" {
+		return fmt.Sprintf("HTTP %d", e.StatusCode)
+	}
+	return fmt.Sprintf("HTTP %d: %s", e.StatusCode, message)
+}
 
 func ProviderInputErrorMessage(err error, fallback string) string {
 	message := strings.ReplaceAll(err.Error(), ErrProviderInput.Error()+": ", "")

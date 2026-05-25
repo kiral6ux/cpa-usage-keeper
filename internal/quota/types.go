@@ -42,6 +42,8 @@ type QuotaRow struct {
 	Window            *QuotaWindow `json:"window,omitempty"`
 	ResetAt           string       `json:"resetAt,omitempty"`
 	ResetAfterSeconds *int64       `json:"resetAfterSeconds,omitempty"`
+	WindowUsageTokens *int64       `json:"window_usage_tokens,omitempty"`
+	WindowUsageCost   *float64     `json:"window_usage_cost,omitempty"`
 }
 
 type AntigravityQuotaInfo struct {

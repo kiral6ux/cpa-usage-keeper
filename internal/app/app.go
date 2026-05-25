@@ -47,6 +47,7 @@ type App struct {
 	RedisProcess      Runner
 	Maintenance       *StorageCleanupRunner
 	MetadataSync      *MetadataSyncRunner
+	QuotaAutoRefresh  *quota.Service
 	BackupMaintenance *DatabaseBackupRunner
 	LogCloser         io.Closer
 
@@ -153,6 +154,7 @@ func NewWithConfig(cfg config.Config) (*App, error) {
 		RedisProcess:      redisProcessRunner,
 		Maintenance:       NewStorageCleanupRunner(syncService),
 		MetadataSync:      NewMetadataSyncRunner(syncService, cfg.MetadataSyncInterval),
+		QuotaAutoRefresh:  quotaService,
 		BackupMaintenance: backupMaintenance,
 		LogCloser:         logCloser,
 		Router: api.NewRouter(
@@ -240,6 +242,14 @@ func (a *App) Run() error {
 		a.startBackgroundTask(func() {
 			if err := a.MetadataSync.Run(ctx); err != nil {
 				logrus.Errorf("metadata sync stopped: %v", err)
+			}
+		})
+	}
+	if a.QuotaAutoRefresh != nil {
+		a.startBackgroundTask(func() {
+			// quota 自动刷新和手动刷新共用队列，但作为独立后台任务跟随 App 生命周期启动和停止。
+			if err := a.QuotaAutoRefresh.StartAutoRefresh(ctx); err != nil {
+				logrus.Errorf("quota auto refresh stopped: %v", err)
 			}
 		})
 	}

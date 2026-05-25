@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"cpa-usage-keeper/internal/entities"
@@ -19,6 +18,7 @@ type RefreshSource string
 
 const (
 	RefreshSourceManual        RefreshSource = "manual"
+	RefreshSourceAuto          RefreshSource = "auto"
 	RefreshSourceScheduled     RefreshSource = "scheduled"
 	RefreshSourceCacheBackfill RefreshSource = "cache_backfill"
 )
@@ -37,7 +37,17 @@ type CacheRequest struct {
 }
 
 type CacheResponse struct {
-	Items []CheckResponse `json:"items"`
+	Items []CachedQuotaItem `json:"items"`
+}
+
+type CachedQuotaItem struct {
+	AuthIndex      string            `json:"auth_index"`
+	Status         RefreshTaskStatus `json:"status"`
+	Quota          *CheckResponse    `json:"quota,omitempty"`
+	Error          string            `json:"error,omitempty"`
+	HTTPStatusCode *int              `json:"http_status_code,omitempty"`
+	ExpiresAt      *time.Time        `json:"expires_at,omitempty"`
+	UpdatedAt      time.Time         `json:"updated_at"`
 }
 
 type RefreshRequest struct {
@@ -46,16 +56,15 @@ type RefreshRequest struct {
 }
 
 type RefreshResponse struct {
-	Tasks    []RefreshTaskID            `json:"tasks"`
+	Tasks    []RefreshTaskRef           `json:"tasks"`
 	Rejected []RefreshRejectedAuthIndex `json:"rejected"`
 	Accepted int                        `json:"accepted"`
 	Skipped  int                        `json:"skipped"`
 	Limit    int                        `json:"limit"`
 }
 
-type RefreshTaskID struct {
+type RefreshTaskRef struct {
 	AuthIndex string `json:"authIndex"`
-	TaskID    string `json:"taskId"`
 }
 
 type RefreshRejectedAuthIndex struct {
@@ -64,27 +73,27 @@ type RefreshRejectedAuthIndex struct {
 }
 
 type RefreshTaskResponse struct {
-	TaskID    string            `json:"taskId"`
-	AuthIndex string            `json:"authIndex"`
-	Status    RefreshTaskStatus `json:"status"`
-	Quota     *CheckResponse    `json:"quota,omitempty"`
-	Error     string            `json:"error,omitempty"`
-	CachedAt  *time.Time        `json:"cachedAt,omitempty"`
-	ExpiresAt *time.Time        `json:"expiresAt,omitempty"`
+	AuthIndex      string            `json:"authIndex"`
+	Status         RefreshTaskStatus `json:"status"`
+	Quota          *CheckResponse    `json:"quota,omitempty"`
+	Error          string            `json:"error,omitempty"`
+	HTTPStatusCode *int              `json:"http_status_code,omitempty"`
+	CachedAt       *time.Time        `json:"cachedAt,omitempty"`
+	ExpiresAt      *time.Time        `json:"expiresAt,omitempty"`
 }
 
 type RefreshTaskRecord struct {
-	TaskID     string
-	AuthIndex  string
-	Status     RefreshTaskStatus
-	Quota      *CheckResponse
-	Error      string
-	Source     RefreshSource
-	CreatedAt  time.Time
-	StartedAt  time.Time
-	FinishedAt time.Time
-	CachedAt   time.Time
-	ExpiresAt  time.Time
+	AuthIndex      string
+	Status         RefreshTaskStatus
+	Quota          *CheckResponse
+	Error          string
+	HTTPStatusCode *int
+	Source         RefreshSource
+	CreatedAt      time.Time
+	StartedAt      time.Time
+	FinishedAt     time.Time
+	CachedAt       time.Time
+	ExpiresAt      time.Time
 }
 
 func (s *Service) GetCachedQuota(ctx context.Context, request CacheRequest) (CacheResponse, error) {
@@ -93,7 +102,7 @@ func (s *Service) GetCachedQuota(ctx context.Context, request CacheRequest) (Cac
 	if len(request.AuthIndexes) == 0 {
 		return CacheResponse{}, fmt.Errorf("%w: auth_indexes are required", ErrValidation)
 	}
-	response := CacheResponse{Items: make([]CheckResponse, 0, len(request.AuthIndexes))}
+	response := CacheResponse{Items: make([]CachedQuotaItem, 0, len(request.AuthIndexes))}
 	s.cleanupExpiredRefreshTasks(time.Now())
 	s.refreshMu.Lock()
 	defer s.refreshMu.Unlock()
@@ -108,16 +117,20 @@ func (s *Service) GetCachedQuota(ctx context.Context, request CacheRequest) (Cac
 			continue
 		}
 		seen[authIndex] = struct{}{}
-		taskID, ok := s.refreshTaskIDsByAuth[authIndex]
+		task, ok := s.refreshTasks[authIndex]
 		if !ok {
 			continue
 		}
-		task, ok := s.refreshTasks[taskID]
-		if !ok || task.Status != RefreshTaskStatusCompleted || task.Quota == nil {
-			continue
+		// 页面恢复缓存只暴露两类稳定状态：成功 quota 和配置允许持久展示的 HTTP 错误。
+		// 普通网络错误/500/超时只给当前轮询读取，不从 cache 接口恢复，避免刷新页面后展示不可长期判断的瞬时失败。
+		switch {
+		case task.Status == RefreshTaskStatusCompleted && task.Quota != nil:
+			quota := *task.Quota
+			response.Items = append(response.Items, CachedQuotaItem{AuthIndex: authIndex, Status: RefreshTaskStatusCompleted, Quota: &quota, UpdatedAt: task.CachedAt})
+		case task.Status == RefreshTaskStatusFailed && task.HTTPStatusCode != nil && isRefreshCacheableHTTPStatus(*task.HTTPStatusCode):
+			expiresAt := task.ExpiresAt
+			response.Items = append(response.Items, CachedQuotaItem{AuthIndex: authIndex, Status: RefreshTaskStatusFailed, Error: task.Error, HTTPStatusCode: task.HTTPStatusCode, ExpiresAt: &expiresAt, UpdatedAt: task.FinishedAt})
 		}
-		quota := *task.Quota
-		response.Items = append(response.Items, quota)
 	}
 	return response, nil
 }
@@ -160,24 +173,24 @@ func (s *Service) Refresh(ctx context.Context, request RefreshRequest) (RefreshR
 			response.Rejected = append(response.Rejected, RefreshRejectedAuthIndex{AuthIndex: authIndex, Error: "duplicate"})
 			continue
 		}
-		response.Tasks = append(response.Tasks, RefreshTaskID{AuthIndex: authIndex, TaskID: task.TaskID})
+		response.Tasks = append(response.Tasks, RefreshTaskRef{AuthIndex: task.AuthIndex})
 		response.Accepted++
-		go s.runRefreshTask(task.TaskID)
+		go s.runRefreshTask(task.AuthIndex)
 	}
 	response.Skipped = len(response.Rejected)
 	return response, nil
 }
 
-func (s *Service) GetRefreshTask(ctx context.Context, taskID string) (RefreshTaskResponse, error) {
+func (s *Service) GetRefreshTaskByAuthIndex(ctx context.Context, authIndex string) (RefreshTaskResponse, error) {
 	_ = ctx
-	taskID = strings.TrimSpace(taskID)
-	if taskID == "" {
-		return RefreshTaskResponse{}, fmt.Errorf("%w: task_id is required", ErrValidation)
+	authIndex = strings.TrimSpace(authIndex)
+	if authIndex == "" {
+		return RefreshTaskResponse{}, fmt.Errorf("%w: auth_index is required", ErrValidation)
 	}
 	s.cleanupExpiredRefreshTasks(time.Now())
 	s.refreshMu.Lock()
 	defer s.refreshMu.Unlock()
-	task, ok := s.refreshTasks[taskID]
+	task, ok := s.refreshTasks[authIndex]
 	if !ok {
 		return RefreshTaskResponse{}, ErrTaskNotFound
 	}
@@ -208,46 +221,47 @@ func (s *Service) validateRefreshAuthIndex(ctx context.Context, authIndex string
 }
 
 func (s *Service) ensureRefreshTask(authIndex string, source RefreshSource) (*RefreshTaskRecord, bool) {
-	// 同一个 auth_index 已经 queued/running 时复用现有任务，避免重复打到上游接口。
+	// auth_index 本身就是任务唯一标识；queued/running 时直接拒绝重复入队，避免重复打到上游接口。
 	now := timeutil.NormalizeStorageTime(time.Now())
 	s.refreshMu.Lock()
 	defer s.refreshMu.Unlock()
-	if taskID, ok := s.refreshTaskIDsByAuth[authIndex]; ok {
-		if task, ok := s.refreshTasks[taskID]; ok && task.isActive() {
-			return task, false
-		}
-		delete(s.refreshTasks, taskID)
+	if task, ok := s.refreshTasks[authIndex]; ok && task.isActive() {
+		return task, false
 	}
 	task := &RefreshTaskRecord{
-		TaskID:    fmt.Sprintf("quota-refresh-%d", atomic.AddUint64(&s.refreshTaskSeq, 1)),
 		AuthIndex: authIndex,
 		Status:    RefreshTaskStatusQueued,
 		Source:    source,
 		CreatedAt: now,
 	}
-	s.refreshTasks[task.TaskID] = task
-	s.refreshTaskIDsByAuth[authIndex] = task.TaskID
+	s.refreshTasks[authIndex] = task
 	return task, true
 }
 
-func (s *Service) runRefreshTask(taskID string) {
+func (s *Service) runRefreshTask(authIndex string) {
 	// worker token 控制全局并发，防止一次批量刷新同时压垮 CPA/上游接口。
 	s.refreshWorkerTokens <- struct{}{}
-	defer func() { <-s.refreshWorkerTokens }()
+	defer func() {
+		// 冷却必须发生在释放 worker slot 之前，否则队列会立刻补进下一条任务，无法形成“每个 worker 完成后停 1 秒”的节流效果。
+		s.refreshCooldown(RefreshTaskCooldown)
+		<-s.refreshWorkerTokens
+	}()
 
-	authIndex, ok := s.markRefreshTaskRunning(taskID)
+	authIndex, ok := s.markRefreshTaskRunning(authIndex)
 	if !ok {
 		return
 	}
 	// 每个任务独立设置超时；超时或 provider 错误都会沉淀到任务状态里给前端展示。
-	ctx, cancel := context.WithTimeout(context.Background(), defaultRefreshTaskTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), RefreshTaskTimeout)
 	defer cancel()
 	response, err := s.Check(ctx, CheckRequest{AuthIndex: authIndex})
 	if err != nil {
-		s.markRefreshTaskFailed(taskID, refreshTaskErrorMessage(err))
+		s.markRefreshTaskFailed(authIndex, err)
 		return
 	}
-	s.markRefreshTaskCompleted(taskID, response)
+	// provider 成功后立即把窗口内 token/cost 补进同一次缓存，前端读取缓存时不再触发额外统计请求。
+	response = s.attachWindowUsageStats(authIndex, response, time.Now())
+	s.markRefreshTaskCompleted(authIndex, response)
 }
 
 func refreshTaskErrorMessage(err error) string {
@@ -257,17 +271,35 @@ func refreshTaskErrorMessage(err error) string {
 	if errors.Is(err, ErrProviderInput) {
 		return ProviderInputErrorMessage(err, "Quota request is missing required parameters.")
 	}
+	var httpErr ProviderHTTPError
+	if errors.As(err, &httpErr) {
+		return httpErr.Error()
+	}
 	if strings.HasPrefix(err.Error(), "HTTP ") {
 		return err.Error()
 	}
 	return "Quota refresh failed. Please try again later."
 }
 
-func (s *Service) markRefreshTaskRunning(taskID string) (string, bool) {
+func refreshTaskHTTPStatusCode(err error) *int {
+	var httpErr ProviderHTTPError
+	if !errors.As(err, &httpErr) {
+		return nil
+	}
+	statusCode := httpErr.StatusCode
+	return &statusCode
+}
+
+func isRefreshCacheableHTTPStatus(statusCode int) bool {
+	_, ok := RefreshCacheableHTTPStatusCodes[statusCode]
+	return ok
+}
+
+func (s *Service) markRefreshTaskRunning(authIndex string) (string, bool) {
 	now := timeutil.NormalizeStorageTime(time.Now())
 	s.refreshMu.Lock()
 	defer s.refreshMu.Unlock()
-	task, ok := s.refreshTasks[taskID]
+	task, ok := s.refreshTasks[authIndex]
 	if !ok || task.Status != RefreshTaskStatusQueued {
 		return "", false
 	}
@@ -276,11 +308,11 @@ func (s *Service) markRefreshTaskRunning(taskID string) (string, bool) {
 	return task.AuthIndex, true
 }
 
-func (s *Service) markRefreshTaskCompleted(taskID string, response CheckResponse) {
+func (s *Service) markRefreshTaskCompleted(authIndex string, response CheckResponse) {
 	now := timeutil.NormalizeStorageTime(time.Now())
 	s.refreshMu.Lock()
 	defer s.refreshMu.Unlock()
-	task, ok := s.refreshTasks[taskID]
+	task, ok := s.refreshTasks[authIndex]
 	if !ok {
 		return
 	}
@@ -290,18 +322,27 @@ func (s *Service) markRefreshTaskCompleted(taskID string, response CheckResponse
 	task.Quota = &response
 }
 
-func (s *Service) markRefreshTaskFailed(taskID string, message string) {
+func (s *Service) markRefreshTaskFailed(authIndex string, err error) {
 	now := timeutil.NormalizeStorageTime(time.Now())
+	message := refreshTaskErrorMessage(err)
+	httpStatusCode := refreshTaskHTTPStatusCode(err)
 	s.refreshMu.Lock()
 	defer s.refreshMu.Unlock()
-	task, ok := s.refreshTasks[taskID]
+	task, ok := s.refreshTasks[authIndex]
 	if !ok {
 		return
 	}
+	// 失败任务分两类保存：401/402 这类可配置 HTTP 错误要进入页面恢复缓存；其它失败只短期保留给当前轮询。
 	task.Status = RefreshTaskStatusFailed
 	task.FinishedAt = now
-	task.ExpiresAt = now.Add(s.refreshTaskTTL)
+	task.CachedAt = now
 	task.Error = message
+	task.HTTPStatusCode = httpStatusCode
+	if httpStatusCode != nil && isRefreshCacheableHTTPStatus(*httpStatusCode) {
+		task.ExpiresAt = now.Add(RefreshErrorCacheTTL)
+		return
+	}
+	task.ExpiresAt = now.Add(s.refreshTaskTTL)
 }
 
 func (s *Service) cleanupExpiredRefreshTasks(now time.Time) {
@@ -311,15 +352,12 @@ func (s *Service) cleanupExpiredRefreshTasks(now time.Time) {
 }
 
 func (s *Service) cleanupExpiredRefreshTasksLocked(now time.Time) {
-	// 任务过期时同步删除 task_id 和 auth_index 索引，避免缓存映射残留。
-	for taskID, task := range s.refreshTasks {
+	// refreshTasks 直接以 auth_index 为 key；过期时删除这一条缓存即可，不再维护额外 taskId 索引。
+	for authIndex, task := range s.refreshTasks {
 		if task.ExpiresAt.IsZero() || now.Before(task.ExpiresAt) {
 			continue
 		}
-		delete(s.refreshTasks, taskID)
-		if s.refreshTaskIDsByAuth[task.AuthIndex] == taskID {
-			delete(s.refreshTaskIDsByAuth, task.AuthIndex)
-		}
+		delete(s.refreshTasks, authIndex)
 	}
 }
 
@@ -329,10 +367,10 @@ func (t *RefreshTaskRecord) isActive() bool {
 
 func (t *RefreshTaskRecord) response() RefreshTaskResponse {
 	response := RefreshTaskResponse{
-		TaskID:    t.TaskID,
-		AuthIndex: t.AuthIndex,
-		Status:    t.Status,
-		Error:     t.Error,
+		AuthIndex:      t.AuthIndex,
+		Status:         t.Status,
+		Error:          t.Error,
+		HTTPStatusCode: t.HTTPStatusCode,
 	}
 	if t.Quota != nil {
 		quota := *t.Quota
