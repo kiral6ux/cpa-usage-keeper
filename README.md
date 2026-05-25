@@ -225,9 +225,9 @@ cp .env.example .env
 
 | 变量 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `QUOTA_REFRESH_WORKER_LIMIT` | 否 | `10` | Auth Files 限额刷新队列最大并发数，最大 `100`；大量账号可手动调大，但会增加上游限流和本地 SQLite 读压力 |
 | `QUOTA_AUTO_REFRESH_ENABLED` | 否 | `false` | 是否启用 Auth Files 限额自动刷新定时任务；关闭时仍可手动刷新限额并计算 token/cost |
 | `QUOTA_AUTO_REFRESH_INTERVAL` | 否 | `5m` | Auth Files 限额自动刷新定时任务间隔，最低 `60s`，仅在 `QUOTA_AUTO_REFRESH_ENABLED=true` 时生效 |
+| `QUOTA_REFRESH_WORKER_LIMIT` | 否 | `10` | Auth Files 限额刷新队列最大并发数，手动刷新和自动刷新共用，最大 `100`；大量账号可手动调大，但会增加上游限流和本地 SQLite 读压力 |
 
 ### Redis 队列高级配置
 

@@ -20,10 +20,10 @@ const (
 	RedisQueueBatchSizeDefault      = 10000
 	RedisQueueErrorBackoffDefault   = 10 * time.Second
 	MetadataSyncIntervalDefault     = 30 * time.Second
-	QuotaRefreshWorkerLimitDefault  = 10
-	QuotaRefreshWorkerLimitMax      = 100
 	QuotaAutoRefreshIntervalDefault = 5 * time.Minute
 	QuotaAutoRefreshIntervalMin     = 60 * time.Second
+	QuotaRefreshWorkerLimitDefault  = 10
+	QuotaRefreshWorkerLimitMax      = 100
 )
 
 var (
@@ -67,12 +67,12 @@ type Config struct {
 	RedisQueueErrorBackoff time.Duration
 	// MetadataSyncInterval 是 auth files 和 provider metadata 的固定刷新间隔。
 	MetadataSyncInterval time.Duration
-	// QuotaRefreshWorkerLimit 是 Auth Files 限额刷新队列的最大并发数。
-	QuotaRefreshWorkerLimit int
 	// QuotaAutoRefreshEnabled 控制是否启动 Auth Files 限额自动刷新后台任务。
 	QuotaAutoRefreshEnabled bool
 	// QuotaAutoRefreshInterval 是 Auth Files 限额自动刷新的固定调度间隔。
 	QuotaAutoRefreshInterval time.Duration
+	// QuotaRefreshWorkerLimit 是 Auth Files 限额刷新队列的最大并发数。
+	QuotaRefreshWorkerLimit int
 	// WorkDir 是应用工作目录，数据库、日志和备份默认从这里派生。
 	WorkDir string
 	// SQLitePath 是 SQLite 数据库文件路径。
@@ -149,17 +149,6 @@ func Load(options LoadOptions) (*Config, error) {
 		return nil, fmt.Errorf("REDIS_QUEUE_IDLE_INTERVAL must be positive")
 	}
 
-	quotaRefreshWorkerLimit, err := getInt("QUOTA_REFRESH_WORKER_LIMIT", QuotaRefreshWorkerLimitDefault)
-	if err != nil {
-		return nil, err
-	}
-	if quotaRefreshWorkerLimit <= 0 {
-		return nil, fmt.Errorf("QUOTA_REFRESH_WORKER_LIMIT must be positive")
-	}
-	if quotaRefreshWorkerLimit > QuotaRefreshWorkerLimitMax {
-		return nil, fmt.Errorf("QUOTA_REFRESH_WORKER_LIMIT must be <= %d", QuotaRefreshWorkerLimitMax)
-	}
-
 	quotaAutoRefreshEnabled, err := getBool("QUOTA_AUTO_REFRESH_ENABLED", false)
 	if err != nil {
 		return nil, err
@@ -171,6 +160,17 @@ func Load(options LoadOptions) (*Config, error) {
 	}
 	if quotaAutoRefreshInterval < QuotaAutoRefreshIntervalMin {
 		return nil, fmt.Errorf("QUOTA_AUTO_REFRESH_INTERVAL must be >= 60s")
+	}
+
+	quotaRefreshWorkerLimit, err := getInt("QUOTA_REFRESH_WORKER_LIMIT", QuotaRefreshWorkerLimitDefault)
+	if err != nil {
+		return nil, err
+	}
+	if quotaRefreshWorkerLimit <= 0 {
+		return nil, fmt.Errorf("QUOTA_REFRESH_WORKER_LIMIT must be positive")
+	}
+	if quotaRefreshWorkerLimit > QuotaRefreshWorkerLimitMax {
+		return nil, fmt.Errorf("QUOTA_REFRESH_WORKER_LIMIT must be <= %d", QuotaRefreshWorkerLimitMax)
 	}
 
 	requestTimeout, err := getDuration("REQUEST_TIMEOUT", 30*time.Second)
@@ -261,9 +261,9 @@ func Load(options LoadOptions) (*Config, error) {
 		RedisQueueIdleInterval:   redisQueueIdleInterval,
 		RedisQueueErrorBackoff:   RedisQueueErrorBackoffDefault,
 		MetadataSyncInterval:     MetadataSyncIntervalDefault,
-		QuotaRefreshWorkerLimit:  quotaRefreshWorkerLimit,
 		QuotaAutoRefreshEnabled:  quotaAutoRefreshEnabled,
 		QuotaAutoRefreshInterval: quotaAutoRefreshInterval,
+		QuotaRefreshWorkerLimit:  quotaRefreshWorkerLimit,
 		WorkDir:                  workDir,
 		SQLitePath:               filepath.Join(workDir, workDirDatabaseName),
 		BackupEnabled:            backupEnabled,

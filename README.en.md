@@ -225,9 +225,9 @@ For first-time deployments, start with "Minimum required" and "Web access and re
 
 | Variable | Required | Default | Description |
 | --- | --- | --- | --- |
-| `QUOTA_REFRESH_WORKER_LIMIT` | No | `10` | Maximum concurrency for Auth Files quota refresh, capped at `100`. Increase manually for many accounts, but it may raise upstream rate-limit and local SQLite read pressure |
 | `QUOTA_AUTO_REFRESH_ENABLED` | No | `false` | Enable the scheduled Auth Files quota auto-refresh task. Manual quota refresh and token/cost calculation still work when disabled |
 | `QUOTA_AUTO_REFRESH_INTERVAL` | No | `5m` | Scheduled Auth Files quota auto-refresh interval, minimum `60s`, only used when `QUOTA_AUTO_REFRESH_ENABLED=true` |
+| `QUOTA_REFRESH_WORKER_LIMIT` | No | `10` | Maximum concurrency for the shared Auth Files quota refresh queue used by both manual and automatic refresh, capped at `100`. Increase manually for many accounts, but it may raise upstream rate-limit and local SQLite read pressure |
 
 ### Redis Queue Advanced Settings
 
