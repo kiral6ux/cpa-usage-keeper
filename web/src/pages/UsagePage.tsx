@@ -14,7 +14,7 @@ import {
   Legend,
   Filler
 } from 'chart.js';
-import { ApiError, fetchAnalysis, fetchCpaApiKeyOptions, fetchCpaApiKeys, fetchStatus, fetchUpdateCheck, fetchUsageEventModelFilterOptions, fetchUsageEventSourceFilterOptions, fetchUsageEvents, logout, updateCpaApiKeyAlias } from '@/lib/api';
+import { ApiError, fetchAnalysis, fetchCpaApiKeyOptions, fetchCpaApiKeys, fetchStatus, fetchUpdateCheck, fetchUsageEventModelFilterOptions, fetchUsageEventSourceFilterOptions, fetchUsageEvents, logout, markStatusActive, updateCpaApiKeyAlias } from '@/lib/api';
 import type { AnalysisResponse, CpaApiKeyOption, CpaApiKeySettingsItem, StatusResponse, UsageEvent, UsageSourceFilterOption } from '@/lib/types';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher';
@@ -117,6 +117,7 @@ const REQUEST_EVENTS_PAGE_SIZES = [20, 50, 100, 500, 1000] as const;
 const REQUEST_EVENTS_DEFAULT_PAGE_SIZE = 100;
 const ALL_REQUEST_EVENTS_FILTER = '__all__';
 const OVERVIEW_AUTO_REFRESH_INTERVAL_MS = 10_000;
+export const STATUS_ACTIVE_HEARTBEAT_INTERVAL_MS = 30_000;
 const CPA_MANAGEMENT_PAGE = 'management.html';
 const ABSOLUTE_HTTP_URL_PATTERN = /^https?:\/\//i;
 const EXPLICIT_URL_SCHEME_PATTERN = /^[a-z][a-z\d+.-]*:/i;
@@ -127,6 +128,11 @@ export const shouldShowRangeControls = (tab: UsageTab) => tab !== 'settings' && 
 export const shouldShowApiKeyFilter = (tab: UsageTab) => shouldShowRangeControls(tab);
 
 export const shouldShowUpdateCheckButton = (status: Pick<StatusResponse, 'updateCheckEnabled'> | null) => status?.updateCheckEnabled === true;
+
+export const isUsagePageVisible = (documentRef?: Pick<Document, 'visibilityState'>) => {
+  const targetDocument = documentRef ?? (typeof document === 'undefined' ? undefined : document);
+  return !targetDocument || targetDocument.visibilityState !== 'hidden';
+};
 
 const getBrowserOrigin = () => (typeof window === 'undefined' ? '' : window.location.origin);
 
@@ -209,6 +215,24 @@ type OverviewAutoRefreshOptions = {
   intervalMs?: number;
 };
 
+type StatusActiveHeartbeatDocument = Pick<Document, 'visibilityState' | 'addEventListener' | 'removeEventListener'>;
+
+type StatusActiveHeartbeatTimerTarget = {
+  setInterval: (handler: () => void, timeout: number) => number;
+  clearInterval: (handle: number) => void;
+};
+
+type StatusActiveHeartbeatOptions = {
+  loadStatus: (signal: AbortSignal) => Promise<StatusResponse>;
+  markActive: (signal: AbortSignal) => Promise<void>;
+  setStatus: (status: StatusResponse) => void;
+  setStatusError: (error: string) => void;
+  onAuthRequired?: () => void;
+  documentRef?: StatusActiveHeartbeatDocument;
+  timerTarget?: StatusActiveHeartbeatTimerTarget;
+  intervalMs?: number;
+};
+
 export const refreshPageData = async ({ refreshActiveTab }: RefreshPageDataOptions) => {
   await refreshActiveTab();
 };
@@ -265,6 +289,80 @@ export const scheduleOverviewAutoRefresh = ({
   return () => {
     stopTimer();
     targetDocument.removeEventListener('visibilitychange', handleVisibilityChange);
+  };
+};
+
+export const scheduleStatusActiveHeartbeat = ({
+  loadStatus,
+  markActive,
+  setStatus,
+  setStatusError,
+  onAuthRequired,
+  documentRef,
+  timerTarget,
+  intervalMs = STATUS_ACTIVE_HEARTBEAT_INTERVAL_MS,
+}: StatusActiveHeartbeatOptions) => {
+  const targetDocument = documentRef ?? (typeof document === 'undefined' ? undefined : document);
+  const timers = timerTarget ?? (typeof window === 'undefined' ? undefined : {
+    setInterval: window.setInterval.bind(window),
+    clearInterval: window.clearInterval.bind(window),
+  });
+  if (!timers) {
+    return () => undefined;
+  }
+
+  let controller: AbortController | null = null;
+  let timer: number | null = null;
+  const isVisible = () => isUsagePageVisible(targetDocument);
+  const stopPolling = () => {
+    controller?.abort();
+    controller = null;
+    if (timer !== null) {
+      timers.clearInterval(timer);
+      timer = null;
+    }
+  };
+  const loadAndMarkActive = async () => {
+    controller?.abort();
+    const requestController = new AbortController();
+    controller = requestController;
+    try {
+      // status 成功后才发送 active 心跳，避免异常页面状态把后端误标记为活跃。
+      const status = await loadStatus(requestController.signal);
+      setStatus(status);
+      setStatusError(status.last_error || '');
+      await markActive(requestController.signal);
+    } catch (error) {
+      if (requestController.signal.aborted) return;
+      if (error instanceof ApiError && error.status === 401) {
+        onAuthRequired?.();
+      }
+    }
+  };
+  const startPolling = () => {
+    if (!isVisible()) {
+      stopPolling();
+      return;
+    }
+    void loadAndMarkActive();
+    timer = timers.setInterval(() => {
+      void loadAndMarkActive();
+    }, intervalMs);
+  };
+  const handleVisibilityChange = () => {
+    stopPolling();
+    startPolling();
+  };
+
+  startPolling();
+  if (targetDocument) {
+    targetDocument.addEventListener('visibilitychange', handleVisibilityChange);
+  }
+  return () => {
+    if (targetDocument) {
+      targetDocument.removeEventListener('visibilitychange', handleVisibilityChange);
+    }
+    stopPolling();
   };
 };
 
@@ -574,8 +672,9 @@ export function UsagePage({ onAuthRequired }: { onAuthRequired?: () => void }) {
   const eventsRequestControllerRef = useRef<AbortController | null>(null);
   const eventsFilterOptionsRequestControllerRef = useRef<AbortController | null>(null);
   const [manualRefreshLoading, setManualRefreshLoading] = useState(false);
+  const [pageVisible, setPageVisible] = useState(isUsagePageVisible);
   const credentialsData = useCredentialsTabData({
-    enabled: activeTab === 'credentials',
+    enabled: activeTab === 'credentials' && pageVisible,
     onAuthRequired,
   });
   const refreshCredentials = credentialsData.refresh;
@@ -865,31 +964,27 @@ export function UsagePage({ onAuthRequired }: { onAuthRequired?: () => void }) {
   }, [customTimeRange.end, customTimeRange.start, lastRefreshedAt, timeRange]);
 
   useEffect(() => {
-    let controller: AbortController | null = null;
-    const loadStatus = async () => {
-      controller?.abort();
-      const requestController = new AbortController();
-      controller = requestController;
-      try {
-        const status: StatusResponse = await fetchStatus(requestController.signal);
-        setStatus(status);
-        setStatusError(status.last_error || '');
-      } catch (error) {
-        if (requestController.signal.aborted) return;
-        if (error instanceof ApiError && error.status === 401) {
-          onAuthRequired?.();
-          return;
-        }
-      }
-    };
-    void loadStatus();
-    const timer = window.setInterval(() => {
-      void loadStatus();
-    }, 30_000);
+    // Credentials 列表、quota cache 和 task polling 都跟页面可见性绑定，隐藏页不保持续约或轮询。
+    const syncPageVisible = () => setPageVisible(isUsagePageVisible());
+    syncPageVisible();
+    if (typeof document === 'undefined') {
+      return undefined;
+    }
+    document.addEventListener('visibilitychange', syncPageVisible);
     return () => {
-      controller?.abort();
-      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', syncPageVisible);
     };
+  }, []);
+
+  useEffect(() => {
+    // 页面级心跳独立于 Credentials tab；调度函数内部负责可见性、abort 和 timer 清理。
+    return scheduleStatusActiveHeartbeat({
+      loadStatus: fetchStatus,
+      markActive: markStatusActive,
+      setStatus,
+      setStatusError,
+      onAuthRequired,
+    });
   }, [onAuthRequired]);
 
   useEffect(() => {

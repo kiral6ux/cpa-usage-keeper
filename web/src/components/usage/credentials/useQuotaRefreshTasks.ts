@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 import { ApiError, fetchUsageQuotaRefreshTask, refreshUsageQuotas } from '@/lib/api'
-import type { UsageQuotaRow } from '@/lib/types'
+import type { UsageQuotaRefreshResponse, UsageQuotaRow } from '@/lib/types'
 
 export interface QuotaState {
   loading?: boolean
@@ -8,7 +8,7 @@ export interface QuotaState {
   refreshStatus?: 'queued' | 'running' | 'completed' | 'failed'
 }
 
-interface PendingRefreshTask {
+export interface PendingRefreshTask {
   authIndex: string
   source: 'batch' | 'row'
 }
@@ -72,16 +72,11 @@ export function useQuotaRefreshTasks({ enabled, currentAuthIndexes, setQuotaByAu
           if (cancelled || controller.signal.aborted) {
             return
           }
-          if (nextError instanceof ApiError && nextError.status === 401) {
-            onAuthRequired?.()
+          const errorUpdate = buildQuotaRefreshTaskErrorUpdate(task.authIndex, nextError, onAuthRequired)
+          if (errorUpdate.settled) {
             settledAuthIndexes.add(task.authIndex)
-            return
           }
-          settledAuthIndexes.add(task.authIndex)
-          stateUpdates[task.authIndex] = {
-            refreshStatus: 'failed',
-            error: quotaErrorMessage(nextError),
-          }
+          stateUpdates[task.authIndex] = errorUpdate.stateUpdate
         }
       }))
 
@@ -125,31 +120,17 @@ export function useQuotaRefreshTasks({ enabled, currentAuthIndexes, setQuotaByAu
     }
     try {
       const response = await refreshUsageQuotas(authIndexes)
+      const submission = buildQuotaRefreshSubmissionUpdate(response, source)
       // 后端返回的是每个 auth_index 对应的独立 task，前端按 auth_index 去重保存。
       setPendingRefreshTasks((current) => {
         const nextByAuthIndex = new Map(current.map((task) => [task.authIndex, task]))
-        for (const task of response.tasks) {
-          nextByAuthIndex.set(task.authIndex, { authIndex: task.authIndex, source })
+        for (const task of submission.pendingTasks) {
+          nextByAuthIndex.set(task.authIndex, task)
         }
         return Array.from(nextByAuthIndex.values())
       })
       setQuotaStateByAuthIndex((current) => {
-        const next = { ...current }
-        for (const task of response.tasks) {
-          next[task.authIndex] = {
-            ...next[task.authIndex],
-            refreshStatus: 'queued',
-            error: undefined,
-          }
-        }
-        for (const rejected of response.rejected ?? []) {
-          next[rejected.authIndex] = {
-            ...next[rejected.authIndex],
-            refreshStatus: 'failed',
-            error: quotaRefreshDisplayError(rejected.error),
-          }
-        }
-        return next
+        return mergeQuotaStates(current, submission.stateUpdates)
       })
     } catch (nextError) {
       if (nextError instanceof ApiError && nextError.status === 401) {
@@ -186,6 +167,59 @@ export function useQuotaRefreshTasks({ enabled, currentAuthIndexes, setQuotaByAu
   }
 }
 
+export function buildQuotaRefreshSubmissionUpdate(response: UsageQuotaRefreshResponse, source: PendingRefreshTask['source']): { pendingTasks: PendingRefreshTask[]; stateUpdates: Record<string, QuotaState> } {
+  const pendingTasks: PendingRefreshTask[] = []
+  const stateUpdates: Record<string, QuotaState> = {}
+  for (const task of response.tasks) {
+    // 新建成功的 task 进入轮询列表，后续由 /quota/refresh/:auth_index 收敛到 completed/failed。
+    pendingTasks.push({ authIndex: task.authIndex, source })
+    stateUpdates[task.authIndex] = {
+      refreshStatus: 'queued',
+      error: undefined,
+    }
+  }
+  for (const rejected of response.rejected ?? []) {
+    if (rejected.error === 'duplicate') {
+      // duplicate 表示后端已有同 auth_index 的 queued/running 任务，前端继续轮询这条现有任务即可。
+      pendingTasks.push({ authIndex: rejected.authIndex, source })
+      stateUpdates[rejected.authIndex] = {
+        refreshStatus: 'queued',
+        error: undefined,
+      }
+      continue
+    }
+    // 其它拒绝是确定性业务错误，不会有后台任务产出结果，直接展示失败原因。
+    stateUpdates[rejected.authIndex] = {
+      refreshStatus: 'failed',
+      error: quotaRefreshDisplayError(rejected.error),
+    }
+  }
+  return { pendingTasks, stateUpdates }
+}
+
+export function buildQuotaRefreshTaskErrorUpdate(authIndex: string, error: unknown, onAuthRequired?: () => void): { authIndex: string; settled: boolean; stateUpdate: QuotaState } {
+  if (error instanceof ApiError && error.status === 401) {
+    // 认证失效时结束当前行轮询，避免页面停留在 queued/running 假状态。
+    onAuthRequired?.()
+    return {
+      authIndex,
+      settled: true,
+      stateUpdate: {
+        refreshStatus: 'failed',
+        error: 'Please sign in again to refresh quota.',
+      },
+    }
+  }
+  return {
+    authIndex,
+    settled: true,
+    stateUpdate: {
+      refreshStatus: 'failed',
+      error: quotaErrorMessage(error),
+    },
+  }
+}
+
 function isQuotaRefreshWorking(state: QuotaState | undefined): boolean {
   return state?.refreshStatus === 'queued' || state?.refreshStatus === 'running'
 }
@@ -212,6 +246,8 @@ export function quotaRefreshDisplayError(error?: string): string {
   switch (error) {
     case 'duplicate':
       return 'Quota refresh is already running for this credential.'
+    case 'duplicate_request':
+      return 'This credential was already included in the refresh request.'
     case 'not_auth_file':
       return 'Quota refresh only supports local auth files.'
     case 'unsupported':

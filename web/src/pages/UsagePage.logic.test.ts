@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildCustomDateRangeQuery, getBackToCPALinkURL, getCustomDateRangeBounds, getOverviewChartEndMs, getOverviewDisplayLoading, getOverviewHourWindowHours, getPreferredOverviewChartPeriod, getTimeRangeOptions, getUsageTabOptions, isCustomDateWithinBounds, openDateInputPicker, refreshPageData, sanitizeRequestEventFilters, scheduleOverviewAutoRefresh, shouldAutoRefreshUsageTab, shouldShowApiKeyFilter, shouldShowRangeControls, shouldShowUpdateCheckButton, getUpdateCheckToastDuration } from './UsagePage';
+import { buildCustomDateRangeQuery, getBackToCPALinkURL, getCustomDateRangeBounds, getOverviewChartEndMs, getOverviewDisplayLoading, getOverviewHourWindowHours, getPreferredOverviewChartPeriod, getTimeRangeOptions, getUsageTabOptions, isCustomDateWithinBounds, isUsagePageVisible, openDateInputPicker, refreshPageData, sanitizeRequestEventFilters, scheduleOverviewAutoRefresh, scheduleStatusActiveHeartbeat, shouldAutoRefreshUsageTab, shouldShowApiKeyFilter, shouldShowRangeControls, shouldShowUpdateCheckButton, STATUS_ACTIVE_HEARTBEAT_INTERVAL_MS, getUpdateCheckToastDuration } from './UsagePage';
 import { filterUsageByWindow, type UsageFilterWindow } from '@/utils/usage';
-import type { UsageSnapshot } from '@/lib/types';
+import type { StatusResponse, UsageSnapshot } from '@/lib/types';
 
 const usage: UsageSnapshot = {
   total_requests: 2,
@@ -77,6 +77,18 @@ const createAutoRefreshTestDocument = (visibilityState: DocumentVisibilityState 
     removeEventListener: target.removeEventListener.bind(target),
     dispatchEvent: target.dispatchEvent.bind(target),
   };
+};
+
+const createStatusResponse = (lastError = ''): StatusResponse => ({
+  running: true,
+  sync_running: false,
+  timezone: 'UTC',
+  last_error: lastError,
+});
+
+const flushPromises = async () => {
+  await Promise.resolve();
+  await Promise.resolve();
 };
 
 afterEach(() => {
@@ -232,6 +244,120 @@ describe('UsagePage Overview auto-refresh', () => {
     testDocument.dispatchEvent(new Event('visibilitychange'));
 
     expect(refreshOverview).not.toHaveBeenCalled();
+  });
+});
+
+describe('UsagePage visibility guard', () => {
+  it('treats hidden documents as inactive for credentials polling', () => {
+    expect(isUsagePageVisible({ visibilityState: 'visible' })).toBe(true);
+    expect(isUsagePageVisible({ visibilityState: 'hidden' })).toBe(false);
+  });
+});
+
+describe('UsagePage status active heartbeat', () => {
+  it('loads status and marks the page active immediately and on the 30s cadence', async () => {
+    let intervalHandler: (() => void) | undefined;
+    const testDocument = createAutoRefreshTestDocument();
+    const timerTarget = {
+      setInterval: vi.fn((handler: () => void, timeout: number) => {
+        intervalHandler = handler;
+        expect(timeout).toBe(STATUS_ACTIVE_HEARTBEAT_INTERVAL_MS);
+        return 7;
+      }),
+      clearInterval: vi.fn(),
+    };
+    const status = createStatusResponse('last problem');
+    const loadStatus = vi.fn(async () => status);
+    const markActive = vi.fn(async () => undefined);
+    const setStatus = vi.fn();
+    const setStatusError = vi.fn();
+
+    const cleanup = scheduleStatusActiveHeartbeat({
+      loadStatus,
+      markActive,
+      setStatus,
+      setStatusError,
+      documentRef: testDocument,
+      timerTarget,
+    });
+    await flushPromises();
+
+    expect(loadStatus).toHaveBeenCalledTimes(1);
+    expect(markActive).toHaveBeenCalledTimes(1);
+    expect(setStatus).toHaveBeenCalledWith(status);
+    expect(setStatusError).toHaveBeenCalledWith('last problem');
+
+    intervalHandler?.();
+    await flushPromises();
+
+    expect(loadStatus).toHaveBeenCalledTimes(2);
+    expect(markActive).toHaveBeenCalledTimes(2);
+
+    cleanup();
+  });
+
+  it('does not start while hidden and starts immediately when visible again', async () => {
+    const testDocument = createAutoRefreshTestDocument('hidden');
+    const timerTarget = {
+      setInterval: vi.fn(() => 8),
+      clearInterval: vi.fn(),
+    };
+    const loadStatus = vi.fn(async () => createStatusResponse());
+    const markActive = vi.fn(async () => undefined);
+
+    const cleanup = scheduleStatusActiveHeartbeat({
+      loadStatus,
+      markActive,
+      setStatus: vi.fn(),
+      setStatusError: vi.fn(),
+      documentRef: testDocument,
+      timerTarget,
+    });
+    await flushPromises();
+
+    expect(loadStatus).not.toHaveBeenCalled();
+
+    testDocument.setVisibilityState('visible');
+    testDocument.dispatchEvent(new Event('visibilitychange'));
+    await flushPromises();
+
+    expect(loadStatus).toHaveBeenCalledTimes(1);
+    expect(markActive).toHaveBeenCalledTimes(1);
+
+    cleanup();
+  });
+
+  it('aborts the in-flight heartbeat and clears the timer when hidden', () => {
+    let capturedSignal: AbortSignal | undefined;
+    const testDocument = createAutoRefreshTestDocument();
+    const timerTarget = {
+      setInterval: vi.fn(() => 9),
+      clearInterval: vi.fn(),
+    };
+    const loadStatus = vi.fn((signal: AbortSignal) => {
+      capturedSignal = signal;
+      return new Promise<StatusResponse>(() => undefined);
+    });
+
+    const cleanup = scheduleStatusActiveHeartbeat({
+      loadStatus,
+      markActive: vi.fn(async () => undefined),
+      setStatus: vi.fn(),
+      setStatusError: vi.fn(),
+      documentRef: testDocument,
+      timerTarget,
+    });
+
+    expect(loadStatus).toHaveBeenCalledTimes(1);
+    expect(capturedSignal?.aborted).toBe(false);
+
+    testDocument.setVisibilityState('hidden');
+    testDocument.dispatchEvent(new Event('visibilitychange'));
+
+    expect(capturedSignal?.aborted).toBe(true);
+    expect(timerTarget.clearInterval).toHaveBeenCalledWith(9);
+
+    cleanup();
   });
 });
 

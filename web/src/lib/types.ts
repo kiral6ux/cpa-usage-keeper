@@ -271,7 +271,7 @@ export interface UsageQuotaCacheItem {
   error?: string
   http_status_code?: number
   expires_at?: string
-  updated_at: string
+  refreshed_at?: string
 }
 
 export interface UsageQuotaCacheResponse {
@@ -283,7 +283,8 @@ export interface UsageQuotaRefreshTaskResponse {
   status: 'queued' | 'running' | 'completed' | 'failed'
   quota?: UsageQuotaCheckResponse
   error?: string
-  cachedAt?: string
+  http_status_code?: number
+  refreshed_at?: string
   expiresAt?: string
 }
 
@@ -293,7 +294,7 @@ export interface UsageQuotaRefreshTaskRef {
 
 export interface UsageQuotaRefreshRejectedAuthIndex {
   authIndex: string
-  error: 'not_found' | 'not_auth_file' | 'unsupported' | 'duplicate' | 'invalid'
+  error: 'not_found' | 'not_auth_file' | 'unsupported' | 'duplicate' | 'duplicate_request' | 'invalid'
 }
 
 export interface UsageQuotaRefreshResponse {

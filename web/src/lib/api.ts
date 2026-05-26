@@ -345,6 +345,13 @@ export async function fetchStatus(signal?: AbortSignal): Promise<StatusResponse>
   return response.json()
 }
 
+export async function markStatusActive(signal?: AbortSignal): Promise<void> {
+  const response = await apiFetch(apiPath('/status/active'), { signal })
+  if (!response.ok) {
+    await parseApiError(response, `Failed to mark backend page activity: ${response.status}`)
+  }
+}
+
 export async function fetchUpdateCheck(signal?: AbortSignal): Promise<UpdateCheckResponse> {
   const response = await apiFetch(apiPath('/update/check'), { signal })
   if (!response.ok) {

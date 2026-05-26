@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { ApiError, fetchUsageQuotaCache } from '@/lib/api'
 import type { UsageQuotaRow } from '@/lib/types'
 import { quotaRefreshDisplayError, type QuotaState } from './useQuotaRefreshTasks'
@@ -25,6 +25,7 @@ export function useQuotaCache({ enabled, authIndexes, onAuthRequired }: UseQuota
   const requestControllerRef = useRef<AbortController | null>(null)
 
   const authIndexesKey = buildQuotaCacheAuthIndexesKey(authIndexes)
+  const stableAuthIndexes = useMemo(() => JSON.parse(authIndexesKey) as string[], [authIndexesKey])
 
   useEffect(() => {
     if (!enabled) {
@@ -35,7 +36,7 @@ export function useQuotaCache({ enabled, authIndexes, onAuthRequired }: UseQuota
 
     const refreshQuotaCache = () => {
       requestControllerRef.current?.abort()
-      if (authIndexes.length === 0) {
+      if (stableAuthIndexes.length === 0) {
         requestControllerRef.current = null
         return
       }
@@ -43,7 +44,7 @@ export function useQuotaCache({ enabled, authIndexes, onAuthRequired }: UseQuota
       const controller = new AbortController()
       requestControllerRef.current = controller
       // 缓存接口不会刷新限额；当前页有多少 auth_index 就查询多少缓存。
-      void fetchUsageQuotaCache(authIndexes, controller.signal).then((response) => {
+      void fetchUsageQuotaCache(stableAuthIndexes, controller.signal).then((response) => {
         if (controller.signal.aborted || requestControllerRef.current !== controller) {
           return
         }
@@ -61,7 +62,7 @@ export function useQuotaCache({ enabled, authIndexes, onAuthRequired }: UseQuota
               changed = true
             }
           }
-          for (const authIndex of authIndexes) {
+          for (const authIndex of stableAuthIndexes) {
             if (!returnedAuthIndexes.has(authIndex) && next[authIndex] !== undefined) {
               delete next[authIndex]
               changed = true
@@ -104,7 +105,7 @@ export function useQuotaCache({ enabled, authIndexes, onAuthRequired }: UseQuota
       requestControllerRef.current?.abort()
       requestControllerRef.current = null
     }
-  }, [enabled, onAuthRequired, authIndexesKey])
+  }, [enabled, onAuthRequired, stableAuthIndexes])
 
   return { quotaByAuthIndex, cachedQuotaStateByAuthIndex, setQuotaByAuthIndex }
 }
