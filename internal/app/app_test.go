@@ -46,7 +46,7 @@ func TestNewWithConfigBuildsQuotaAutoRefreshWhenEnabled(t *testing.T) {
 	}
 	defer app.Close()
 	if app.QuotaAutoRefresh == nil {
-		t.Fatal("expected quota auto refresh runner by default")
+		t.Fatal("expected quota auto refresh runner when enabled")
 	}
 	if app.QuotaService == nil {
 		t.Fatal("expected quota service to remain available for manual refresh")
