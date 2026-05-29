@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   binary-release-linux:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:
@@ -225,7 +225,7 @@ jobs:
           if-no-files-found: error
 
   publish-release:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     needs:
       - binary-release-linux
       - binary-release-darwin
