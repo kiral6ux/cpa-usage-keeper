@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -11,6 +12,8 @@ permissions:
 jobs:
   binary-release-linux:
     runs-on: ubuntu-22.04
+    container:
+      image: golang:1.22-bullseye
     strategy:
       fail-fast: false
       matrix:
