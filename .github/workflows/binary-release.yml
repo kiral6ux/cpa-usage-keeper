@@ -61,7 +61,7 @@ jobs:
       - name: Build binary package
         shell: bash
         env:
-          VERSION: ${{ github.ref_name }}
+          VERSION: ${{ inputs.version || github.ref_name }}
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CC: ${{ matrix.cc }}
@@ -81,8 +81,8 @@ jobs:
       - name: Upload binary package artifact
         uses: actions/upload-artifact@v6
         with:
-          name: cpa-usage-keeper-${{ github.ref_name }}-${{ matrix.goos }}-${{ matrix.asset_arch }}
-          path: dist/cpa-usage-keeper_${{ github.ref_name }}_${{ matrix.goos }}_${{ matrix.asset_arch }}.tar.gz
+          name: cpa-usage-keeper-${{ inputs.version || github.ref_name }}-${{ matrix.goos }}-${{ matrix.asset_arch }}
+          path: dist/cpa-usage-keeper_${{ inputs.version || github.ref_name }}_${{ matrix.goos }}_${{ matrix.asset_arch }}.tar.gz
           if-no-files-found: error
 
   binary-release-darwin:
@@ -125,7 +125,7 @@ jobs:
 
       - name: Build binary package
         env:
-          VERSION: ${{ github.ref_name }}
+          VERSION: ${{ inputs.version || github.ref_name }}
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           ASSET_ARCH: ${{ matrix.asset_arch }}
@@ -143,8 +143,8 @@ jobs:
       - name: Upload binary package artifact
         uses: actions/upload-artifact@v6
         with:
-          name: cpa-usage-keeper-${{ github.ref_name }}-${{ matrix.goos }}-${{ matrix.asset_arch }}
-          path: dist/cpa-usage-keeper_${{ github.ref_name }}_${{ matrix.goos }}_${{ matrix.asset_arch }}.tar.gz
+          name: cpa-usage-keeper-${{ inputs.version || github.ref_name }}-${{ matrix.goos }}-${{ matrix.asset_arch }}
+          path: dist/cpa-usage-keeper_${{ inputs.version || github.ref_name }}_${{ matrix.goos }}_${{ matrix.asset_arch }}.tar.gz
           if-no-files-found: error
 
   binary-release-windows:
@@ -202,7 +202,7 @@ jobs:
       - name: Build binary package
         shell: msys2 {0}
         env:
-          VERSION: ${{ github.ref_name }}
+          VERSION: ${{ inputs.version || github.ref_name }}
           GOOS: windows
           GOARCH: ${{ matrix.goarch }}
           ASSET_ARCH: ${{ matrix.asset_arch }}
@@ -220,7 +220,7 @@ jobs:
       - name: Archive binary package
         shell: pwsh
         env:
-          VERSION: ${{ github.ref_name }}
+          VERSION: ${{ inputs.version || github.ref_name }}
           ASSET_ARCH: ${{ matrix.asset_arch }}
         run: |
           $packageName = "cpa-usage-keeper_${env:VERSION}_windows_${env:ASSET_ARCH}"
@@ -229,8 +229,8 @@ jobs:
       - name: Upload binary package artifact
         uses: actions/upload-artifact@v6
         with:
-          name: cpa-usage-keeper-${{ github.ref_name }}-windows-${{ matrix.asset_arch }}
-          path: dist/cpa-usage-keeper_${{ github.ref_name }}_windows_${{ matrix.asset_arch }}.zip
+          name: cpa-usage-keeper-${{ inputs.version || github.ref_name }}-windows-${{ matrix.asset_arch }}
+          path: dist/cpa-usage-keeper_${{ inputs.version || github.ref_name }}_windows_${{ matrix.asset_arch }}.zip
           if-no-files-found: error
 
   publish-release:
