@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"cpa-usage-keeper/internal/helper"
-	"cpa-usage-keeper/internal/redact"
 	"cpa-usage-keeper/internal/service"
 	servicedto "cpa-usage-keeper/internal/service/dto"
 	"cpa-usage-keeper/internal/timeutil"
@@ -115,7 +114,7 @@ func loadCPAAPIKeyInfos(c *gin.Context, provider service.CPAAPIKeyProvider) (map
 	}
 	infos := make(map[string]analysisAPIKeyInfo, len(rows))
 	for _, row := range rows {
-		infos[row.APIKey] = analysisAPIKeyInfo{ID: row.ID, Label: helper.CPAAPIKeyDisplayLabel(row)}
+		infos[row.APIKey] = analysisAPIKeyInfo{ID: row.ID, Label: helper.CPAAPIKeyDisplayName(row)}
 	}
 	return infos, nil
 }
@@ -161,9 +160,10 @@ func buildAnalysisCompositionPayload(items []servicedto.AnalysisCompositionItem,
 	}
 	payload := make([]analysisCompositionItem, 0, len(items))
 	for _, item := range items {
-		key := analysisAPIKeyResponseKey(item.Key, apiKeyInfos)
+		key := helper.RedactSensitiveValue(item.Key)
 		label := item.Key
 		if apiKeyInfos != nil {
+			key = analysisAPIKeyResponseKey(item.Key, apiKeyInfos)
 			label = analysisAPIKeyLabel(item.Key, apiKeyInfos)
 		} else if item.Label != "" {
 			label = item.Label
@@ -181,14 +181,14 @@ func analysisAPIKeyResponseKey(apiKey string, apiKeyInfos map[string]analysisAPI
 	if info, ok := apiKeyInfos[apiKey]; ok && info.ID > 0 {
 		return strconv.FormatInt(info.ID, 10)
 	}
-	return redact.APIKeyDisplayName(apiKey)
+	return helper.RedactSensitiveValue(apiKey)
 }
 
 func analysisAPIKeyLabel(apiKey string, apiKeyInfos map[string]analysisAPIKeyInfo) string {
 	if info, ok := apiKeyInfos[apiKey]; ok && info.Label != "" {
 		return info.Label
 	}
-	return redact.APIKeyDisplayName(apiKey)
+	return helper.RedactSensitiveValue(apiKey)
 }
 
 func buildAnalysisHeatmapPayload(cells []servicedto.AnalysisHeatmapCell, apiKeyInfos map[string]analysisAPIKeyInfo) analysisHeatmap {

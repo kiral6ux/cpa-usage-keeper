@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"cpa-usage-keeper/internal/entities"
-	"cpa-usage-keeper/internal/repository/dto"
 	servicedto "cpa-usage-keeper/internal/service/dto"
 )
 
@@ -20,10 +19,6 @@ type usageEventsStub struct {
 	lastFilter         servicedto.UsageFilter
 	filterCalls        int
 	filterOptionCalls  int
-}
-
-func (s *usageEventsStub) GetUsageWithFilter(context.Context, servicedto.UsageFilter) (*dto.StatisticsSnapshot, error) {
-	return nil, nil
 }
 
 func (s *usageEventsStub) GetUsageOverview(context.Context, servicedto.UsageFilter) (*servicedto.UsageOverviewSnapshot, error) {
@@ -231,6 +226,33 @@ func TestUsageEventsFallsBackToMaskedCPAAPIKeyFromGroupKey(t *testing.T) {
 	}
 	if contains(body, `sk-beta654321`) {
 		t.Fatalf("expected raw API key to stay hidden, got %s", body)
+	}
+}
+
+func TestUsageEventsFallsBackToCanonicalMaskedAPIKeyWhenGroupKeyIsUnmatched(t *testing.T) {
+	provider := &usageEventsStub{events: []servicedto.UsageEventRecord{{
+		ID:          51,
+		Timestamp:   time.Date(2026, 4, 22, 11, 0, 0, 0, time.UTC),
+		APIGroupKey: "sk-BabcdefghijklmnopqrstuvwxyzmaWyTA",
+		Model:       "claude-sonnet",
+		AuthType:    "apikey",
+		Provider:    "Fallback Provider",
+	}}}
+	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "", OptionalProviders{})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/events?range=24h", nil)
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	body := resp.Body.String()
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", resp.Code, body)
+	}
+	if !contains(body, `"api_key":"sk-*********maWyTA"`) {
+		t.Fatalf("expected canonical masked API key in response body: %s", body)
+	}
+	if contains(body, `sk-BabcdefghijklmnopqrstuvwxyzmaWyTA`) || contains(body, `sk-B***************************WyTA`) {
+		t.Fatalf("expected raw and variable-length masked keys to stay hidden, got %s", body)
 	}
 }
 

@@ -130,7 +130,7 @@ func listCPAAPIKeyOptionRows(c *gin.Context, provider service.CPAAPIKeyProvider)
 }
 
 func toCPAAPIKeyResponse(row entities.CPAAPIKey) cpaAPIKeyResponse {
-	label := helper.CPAAPIKeyDisplayLabel(row)
+	label := helper.CPAAPIKeyDisplayName(row)
 	var lastSyncedAt *string
 	if row.LastSyncedAt != nil {
 		value := timeutil.FormatStorageTime(*row.LastSyncedAt)
@@ -139,14 +139,14 @@ func toCPAAPIKeyResponse(row entities.CPAAPIKey) cpaAPIKeyResponse {
 	return cpaAPIKeyResponse{
 		ID:           strconv.FormatInt(row.ID, 10),
 		KeyAlias:     row.KeyAlias,
-		DisplayKey:   row.DisplayKey,
+		DisplayKey:   helper.CPAAPIKeyMaskedDisplayKey(row),
 		Label:        label,
 		LastSyncedAt: lastSyncedAt,
 	}
 }
 
 func toCPAAPIKeyOption(row entities.CPAAPIKey) cpaAPIKeyOption {
-	label := helper.CPAAPIKeyDisplayLabel(row)
+	label := helper.CPAAPIKeyDisplayName(row)
 	return cpaAPIKeyOption{
 		ID:    strconv.FormatInt(row.ID, 10),
 		Label: label,

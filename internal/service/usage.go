@@ -35,14 +35,6 @@ func (s *usageService) resolveAPIGroupKey(apiKeyID string) (string, error) {
 	return apiKey.APIKey, nil
 }
 
-func (s *usageService) GetUsageWithFilter(_ context.Context, filter servicedto.UsageFilter) (*repodto.StatisticsSnapshot, error) {
-	return repository.BuildUsageSnapshotWithFilter(s.db, repodto.UsageQueryFilter{
-		Range:     filter.Range,
-		StartTime: filter.StartTime,
-		EndTime:   filter.EndTime,
-	})
-}
-
 // Usage 页面里的 Overview tab 下传时间窗口和全局 API-Key，仓储层负责构建 overview 聚合。
 func (s *usageService) GetUsageOverview(_ context.Context, filter servicedto.UsageFilter) (*servicedto.UsageOverviewSnapshot, error) {
 	apiGroupKey, err := s.resolveAPIGroupKey(filter.APIKeyID)

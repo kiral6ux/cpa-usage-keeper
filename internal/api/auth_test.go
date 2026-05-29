@@ -132,11 +132,11 @@ func TestAuthSessionReturnsAdminRoleAfterPasswordLogin(t *testing.T) {
 func TestAuthAPIKeyLoginSetsViewerSessionCookieAndSessionSummary(t *testing.T) {
 	sessions := auth.NewSessionManager(time.Hour)
 	config := AuthConfig{Enabled: true, LoginPassword: "secret", SessionTTL: time.Hour, BasePath: "/cpa"}
-	keyProvider := &authCPAAPIKeyStub{row: entities.CPAAPIKey{ID: 42, APIKey: "sk-live", DisplayKey: "sk-*********live", KeyAlias: "Team Key"}}
+	keyProvider := &authCPAAPIKeyStub{row: entities.CPAAPIKey{ID: 42, APIKey: "sk-live123456", DisplayKey: "sk-l************3456", KeyAlias: "Team Key"}}
 	router := NewRouter(nil, nil, nil, nil, config, NewAuthHandler(config, sessions), "/cpa", OptionalProviders{CPAAPIKeys: keyProvider})
 
 	loginResp := httptest.NewRecorder()
-	loginReq := httptest.NewRequest(http.MethodPost, "/cpa/api/v1/auth/api-key-login", strings.NewReader(`{"apiKey":"sk-live"}`))
+	loginReq := httptest.NewRequest(http.MethodPost, "/cpa/api/v1/auth/api-key-login", strings.NewReader(`{"apiKey":"sk-live123456"}`))
 	loginReq.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(loginResp, loginReq)
 	if loginResp.Code != http.StatusNoContent {
@@ -146,7 +146,7 @@ func TestAuthAPIKeyLoginSetsViewerSessionCookieAndSessionSummary(t *testing.T) {
 	if len(cookies) == 0 || cookies[0].Path != "/cpa" {
 		t.Fatalf("expected auth cookie with /cpa path, got %+v", cookies)
 	}
-	if keyProvider.byValueKey != "sk-live" {
+	if keyProvider.byValueKey != "sk-live123456" {
 		t.Fatalf("expected login to pass API key to provider, got %q", keyProvider.byValueKey)
 	}
 
@@ -156,10 +156,10 @@ func TestAuthAPIKeyLoginSetsViewerSessionCookieAndSessionSummary(t *testing.T) {
 	router.ServeHTTP(sessionResp, sessionReq)
 
 	body := sessionResp.Body.String()
-	if sessionResp.Code != http.StatusOK || !contains(body, `"authenticated":true`) || !contains(body, `"role":"api_key_viewer"`) || !contains(body, `"api_key":{"display_key":"sk-*********live","alias":"Team Key"}`) {
+	if sessionResp.Code != http.StatusOK || !contains(body, `"authenticated":true`) || !contains(body, `"role":"api_key_viewer"`) || !contains(body, `"api_key":{"display_key":"sk-*********123456","alias":"Team Key"}`) {
 		t.Fatalf("unexpected session response: %d %s", sessionResp.Code, body)
 	}
-	if contains(body, "sk-live") {
+	if contains(body, "sk-live123456") || contains(body, "sk-l************3456") {
 		t.Fatalf("expected session response not to expose raw API key: %s", body)
 	}
 }

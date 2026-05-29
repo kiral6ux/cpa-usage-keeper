@@ -5,17 +5,10 @@ import (
 	"time"
 
 	"cpa-usage-keeper/internal/entities"
+	"cpa-usage-keeper/internal/helper"
 
 	"gorm.io/gorm"
 )
-
-func MaskAPIKey(key string) string {
-	const mask = "*********"
-	if len(key) < 9 {
-		return mask
-	}
-	return key[:3] + mask + key[len(key)-6:]
-}
 
 func SyncCPAAPIKeys(db *gorm.DB, keys []string, syncedAt time.Time) error {
 	seen := make(map[string]struct{}, len(keys))
@@ -59,7 +52,7 @@ func SyncCPAAPIKeys(db *gorm.DB, keys []string, syncedAt time.Time) error {
 			incoming[key] = struct{}{}
 			if existing, ok := existingByKey[key]; ok {
 				updates := map[string]any{
-					"display_key":    MaskAPIKey(key),
+					"display_key":    helper.RedactSensitiveValue(key),
 					"is_deleted":     false,
 					"last_synced_at": &syncedAt,
 					"updated_at":     syncedAt,
@@ -71,7 +64,7 @@ func SyncCPAAPIKeys(db *gorm.DB, keys []string, syncedAt time.Time) error {
 			}
 			toCreate = append(toCreate, entities.CPAAPIKey{
 				APIKey:       key,
-				DisplayKey:   MaskAPIKey(key),
+				DisplayKey:   helper.RedactSensitiveValue(key),
 				IsDeleted:    false,
 				LastSyncedAt: &syncedAt,
 			})

@@ -12,15 +12,6 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestMaskAPIKeyUsesThreeCharacterPrefixAndSixCharacterSuffix(t *testing.T) {
-	if got := MaskAPIKey("sk-abcdef123456"); got != "sk-*********123456" {
-		t.Fatalf("unexpected masked key: %s", got)
-	}
-	if got := MaskAPIKey("short"); got != "*********" {
-		t.Fatalf("short key should be fully masked, got %s", got)
-	}
-}
-
 func TestSyncCPAAPIKeysCreatesRowsWithDisplayKeyAndEmptyAlias(t *testing.T) {
 	db := openCPAAPIKeyTestDatabase(t)
 	syncedAt := time.Date(2026, 5, 13, 10, 0, 0, 0, time.UTC)

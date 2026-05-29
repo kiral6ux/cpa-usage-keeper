@@ -36,6 +36,8 @@ func UsageIdentityDisplayName(item entities.UsageIdentity) string {
 		return prefix
 	case provider != "" && baseURL != "":
 		return provider + "(" + baseURL + ")"
+	case provider != "":
+		return provider
 	case baseURL != "":
 		return baseURL
 	default:

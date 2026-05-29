@@ -9,6 +9,7 @@ import (
 
 	"cpa-usage-keeper/internal/auth"
 	"cpa-usage-keeper/internal/entities"
+	"cpa-usage-keeper/internal/helper"
 	"cpa-usage-keeper/internal/service"
 	"github.com/gin-gonic/gin"
 )
@@ -147,7 +148,7 @@ func (h *authHandler) getSession(c *gin.Context) {
 			c.JSON(http.StatusOK, sessionResponse{Authenticated: false})
 			return
 		}
-		response.APIKey = &sessionAPIKeyResponse{DisplayKey: row.DisplayKey, Alias: row.KeyAlias}
+		response.APIKey = &sessionAPIKeyResponse{DisplayKey: helper.CPAAPIKeyMaskedDisplayKey(row), Alias: row.KeyAlias}
 	}
 	c.JSON(http.StatusOK, response)
 }

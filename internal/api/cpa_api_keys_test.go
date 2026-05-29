@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"cpa-usage-keeper/internal/config"
+	"cpa-usage-keeper/internal/entities"
 	"cpa-usage-keeper/internal/repository"
 	"cpa-usage-keeper/internal/service"
 
@@ -58,6 +59,37 @@ func TestCPAAPIKeyRoutesReturnDisplayDataWithoutRawKeys(t *testing.T) {
 	}
 	if parsed.Items[1].ID != "2" || parsed.Items[1].KeyAlias != "" || parsed.Items[1].DisplayKey != "sk-*********654321" || parsed.Items[1].Label != "sk-*********654321" {
 		t.Fatalf("unexpected fallback row: %+v", parsed.Items[1])
+	}
+}
+
+func TestCPAAPIKeyRoutesNormalizeStaleDisplayKeys(t *testing.T) {
+	db := openCPAAPIKeyAPITestDatabase(t)
+	if err := db.Create(&entities.CPAAPIKey{
+		APIKey:     "sk-BabcdefghijklmnopqrstuvwxyzmaWyTA",
+		DisplayKey: "sk-B********************************maWy",
+	}).Error; err != nil {
+		t.Fatalf("seed stale API key: %v", err)
+	}
+	router := NewRouter(nil, statusStub{}, nil, nil, AuthConfig{}, nil, "", OptionalProviders{CPAAPIKeys: service.NewCPAAPIKeyService(db)})
+
+	resp := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/api-keys", nil)
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", resp.Code, resp.Body.String())
+	}
+	var parsed struct {
+		Items []struct {
+			DisplayKey string `json:"displayKey"`
+			Label      string `json:"label"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &parsed); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(parsed.Items) != 1 || parsed.Items[0].DisplayKey != "sk-*********maWyTA" || parsed.Items[0].Label != "sk-*********maWyTA" {
+		t.Fatalf("expected canonical display data, got %+v", parsed.Items)
 	}
 }
 
